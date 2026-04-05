@@ -1,0 +1,362 @@
+/* ─── Profile layout ─────────────────────────── */
+.profile-wrap {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+/* ─── Avatar section ─────────────────────────── */
+.profile-avatar-section {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 12px;
+}
+
+.avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.avatar-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #1c1c1c;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3a3a3a;
+  overflow: hidden;
+  transition: border-color var(--transition);
+}
+
+.avatar-circle svg { width: 34px; height: 34px; }
+.avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
+
+.avatar-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--transition);
+}
+
+.avatar-wrap:hover .avatar-overlay   { opacity: 1; }
+.avatar-wrap:hover .avatar-circle     { border-color: var(--border-light); }
+
+.avatar-overlay svg { width: 16px; height: 16px; color: #fff; }
+
+.avatar-meta { flex: 1; min-width: 0; }
+
+.avatar-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin-bottom: 3px;
+}
+
+.avatar-role {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.avatar-photo-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+.avatar-photo-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+
+/* ─── Profile card ───────────────────────────── */
+.profile-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.profile-card-header {
+  display: flex;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.profile-card-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.profile-card-body {
+  padding: 4px 0;
+}
+
+/* ─── Field rows ─────────────────────────────── */
+.field-row {
+  display: flex;
+  align-items: center;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+  min-height: 52px;
+}
+
+.field-row:last-child { border-bottom: none; }
+
+.field-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  width: 80px;
+  flex-shrink: 0;
+}
+
+.field-value {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field-value.muted {
+  color: var(--text-secondary);
+}
+
+.field-action-btn {
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+.field-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ─── Inline edit form ───────────────────────── */
+.field-edit-wrap {
+  padding: 12px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  display: none;
+}
+
+.field-edit-wrap.open { display: block; }
+
+.field-edit-wrap .form-input {
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  margin-bottom: 10px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.field-edit-wrap .form-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.field-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ─── Password form ──────────────────────────── */
+.password-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  cursor: pointer;
+  transition: background var(--transition);
+  user-select: none;
+}
+.password-toggle:hover { background: var(--bg-hover); }
+
+.password-toggle-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.password-toggle-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.password-toggle.open .password-toggle-icon { transform: rotate(180deg); }
+
+.password-form {
+  padding: 0 20px 16px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.password-form.open {
+  display: flex;
+  animation: fadeIn 0.18s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.password-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.password-form .form-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.password-form .form-input {
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.password-form .form-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.password-form .form-input::placeholder { color: var(--text-muted); }
+
+.password-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/* ─── Logout ─────────────────────────────────── */
+.logout-section {
+  margin-top: 8px;
+}
+
+.logout-btn {
+  width: 100%;
+  padding: 12px 20px;
+  border-radius: var(--radius-lg);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all var(--transition);
+}
+.logout-btn svg { width: 14px; height: 14px; }
+.logout-btn:hover {
+  background: rgba(239,68,68,0.06);
+  border-color: rgba(239,68,68,0.2);
+  color: #f87171;
+}
+
+/* ─── Toast ──────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  color: var(--text-primary);
+  pointer-events: all;
+  min-width: 220px;
+  animation: toastIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.toast.toast-out { animation: toastOut 0.18s ease forwards; }
+@keyframes toastIn  { from { opacity:0; transform: translateX(14px); } to { opacity:1; transform: translateX(0); } }
+@keyframes toastOut { from { opacity:1; transform: translateX(0); }   to { opacity:0; transform: translateX(14px); } }
+
+.toast-icon { width: 14px; height: 14px; flex-shrink: 0; }
+.toast-msg  { flex: 1; }
+
+.toast-success { border-left: 3px solid var(--success); }
+.toast-error   { border-left: 3px solid var(--danger); }
+.toast-loading { border-left: 3px solid var(--accent); }
+
+.toast-success .toast-icon { color: var(--success); }
+.toast-error   .toast-icon { color: var(--danger); }
+.toast-loading .toast-icon { color: var(--accent); }
+
+.spin { animation: spin 0.75s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Sidebar user active ────────────────────── */
+.sidebar-user.active {
+  background: var(--bg-hover);
+}

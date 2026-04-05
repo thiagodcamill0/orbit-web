@@ -3,29 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Orbit</title>
+  <title>orbit — Perfil</title>
   <link rel="stylesheet" href="css/global.css" />
   <link rel="stylesheet" href="css/dashboard.css" />
+  <link rel="stylesheet" href="css/profile.css" />
 </head>
 <body>
-
 <div class="app">
 
   <!-- ─── Sidebar ──────────────────────────────── -->
   <aside class="sidebar">
-
     <div class="sidebar-header">
       <div class="sidebar-brand">
         <span class="sidebar-brand-name">Orbit</span>
       </div>
     </div>
-
     <nav class="sidebar-nav">
-
       <div class="nav-section">
         <div class="nav-section-label">Principal</div>
-
-        <a class="nav-item active" href="index.html">
+        <a class="nav-item" href="index.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="7" height="7" rx="1"/>
             <rect x="14" y="3" width="7" height="7" rx="1"/>
@@ -34,7 +30,6 @@
           </svg>
           <span class="nav-label">Home</span>
         </a>
-
         <a class="nav-item" href="agents.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="8" r="4"/>
@@ -44,16 +39,16 @@
           </svg>
           <span class="nav-label">Agentes</span>
         </a>
-
         <a class="nav-item" href="analytics.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
           <span class="nav-label">Analytics</span>
         </a>
-
         <a class="nav-item" href="security.html">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
           <span class="nav-label">Security</span>
         </a>
         <a class="nav-item" href="results.html">
@@ -74,12 +69,9 @@
           </svg>
           <span class="nav-label">Logs</span>
         </a>
-
       </div>
-
       <div class="nav-section">
         <div class="nav-section-label">Sistema</div>
-
         <a class="nav-item" href="integrations.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
@@ -87,7 +79,6 @@
           </svg>
           <span class="nav-label">Integrações</span>
         </a>
-
         <a class="nav-item" href="settings.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
@@ -102,22 +93,20 @@
           </svg>
           <span class="nav-label">Billing</span>
         </a>
-
       </div>
-
     </nav>
-
 
     <button class="sidebar-toggle-btn" aria-label="Toggle sidebar">
       <svg class="sidebar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
         <polyline points="15 18 9 12 15 6"/>
       </svg>
     </button>
+
     <div class="sidebar-footer">
-      <a class="sidebar-user" href="profile.html">
-        <div class="user-avatar"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5"/><path d="M3 20.5c0-4.14 4.03-7.5 9-7.5s9 3.36 9 7.5"/></svg></div>
+      <a class="sidebar-user active" href="profile.html">
+        <div class="user-avatar" id="sidebarAvatar"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5"/><path d="M3 20.5c0-4.14 4.03-7.5 9-7.5s9 3.36 9 7.5"/></svg></div>
         <div class="user-info">
-          <div class="user-name">Usuário</div>
+          <div class="user-name" id="sidebarName">Usuário</div>
           <div class="user-role">Administrador</div>
         </div>
         <svg class="user-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -125,129 +114,124 @@
         </svg>
       </a>
     </div>
-
   </aside>
 
   <!-- ─── Main ──────────────────────────────────── -->
   <div class="main">
-
     <div class="content">
+      <div class="profile-wrap">
 
-      <div class="page-header">
-        <div class="page-title">Visão Geral</div>
-        <div class="page-desc">Gerencie e monitore seus agentes de IA</div>
+        <div class="page-header">
+          <div class="page-title">Perfil</div>
+          <div class="page-desc">Gerencie suas informações pessoais e segurança</div>
+        </div>
+
+        <!-- Avatar -->
+        <div class="profile-avatar-section">
+          <div class="avatar-wrap">
+            <div class="avatar-circle" id="avatarCircle"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5"/><path d="M3 20.5c0-4.14 4.03-7.5 9-7.5s9 3.36 9 7.5"/></svg></div>
+            <div class="avatar-overlay" id="avatarOverlay">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+            </div>
+            <input type="file" id="avatarInput" accept="image/*" hidden />
+          </div>
+          <div class="avatar-meta">
+            <div class="avatar-name" id="avatarName">Usuário</div>
+            <div class="avatar-role">Administrador</div>
+          </div>
+          <button class="avatar-photo-btn" id="avatarBtn">Trocar foto</button>
+        </div>
+
+        <!-- Dados pessoais -->
+        <div class="profile-card">
+          <div class="profile-card-header">
+            <span class="profile-card-title">Dados pessoais</span>
+          </div>
+          <div class="profile-card-body">
+
+            <!-- Nome -->
+            <div class="field-row" id="nameRow">
+              <span class="field-label">Nome</span>
+              <span class="field-value" id="nameDisplay">Usuário</span>
+              <button class="field-action-btn" id="editNameBtn">Editar</button>
+            </div>
+            <div class="field-edit-wrap" id="nameEditWrap">
+              <input class="form-input" type="text" id="nameInput" value="Usuário" placeholder="Seu nome" />
+              <div class="field-edit-actions">
+                <button class="btn-sm btn-sm-ghost" id="cancelNameBtn">Cancelar</button>
+                <button class="btn-sm btn-sm-accent" id="saveNameBtn">Salvar</button>
+              </div>
+            </div>
+
+            <!-- Email -->
+            <div class="field-row">
+              <span class="field-label">Email</span>
+              <span class="field-value muted">usuario@email.com</span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Segurança -->
+        <div class="profile-card">
+          <div class="profile-card-header">
+            <span class="profile-card-title">Segurança</span>
+          </div>
+          <div class="profile-card-body">
+
+            <div class="password-toggle" id="passwordToggle">
+              <span class="password-toggle-label">Alterar senha</span>
+              <svg class="password-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
+
+            <div class="password-form" id="passwordForm">
+              <div class="form-group" style="padding-top:14px">
+                <label class="form-label">Senha atual</label>
+                <input class="form-input" type="password" id="currentPassword" placeholder="••••••••" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Nova senha</label>
+                <input class="form-input" type="password" id="newPassword" placeholder="••••••••" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Confirmar nova senha</label>
+                <input class="form-input" type="password" id="confirmPassword" placeholder="••••••••" />
+              </div>
+              <div class="password-form-actions">
+                <button class="btn-sm btn-sm-ghost" id="cancelPasswordBtn">Cancelar</button>
+                <button class="btn-sm btn-sm-accent" id="savePasswordBtn">Salvar senha</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Logout -->
+        <div class="logout-section">
+          <button class="logout-btn" id="logoutBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            Sair da conta
+          </button>
+        </div>
+
       </div>
-
-      <div class="stats-row">
-
-        <div class="stat-card">
-          <span class="stat-label">Total de Agentes</span>
-          <div class="stat-body">
-            <div class="stat-value" id="statTotal">0</div>
-            <div class="stat-icon-block">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <circle cx="12" cy="8" r="4"/>
-                <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <span class="stat-label">Ativos</span>
-          <div class="stat-body">
-            <div class="stat-value" id="statActive">0</div>
-            <div class="stat-icon-block">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <span class="stat-label">Modelos em uso</span>
-          <div class="stat-body">
-            <div class="stat-value" id="statModels">0</div>
-            <div class="stat-icon-block">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                <path d="M2 17l10 5 10-5"/>
-                <path d="M2 12l10 5 10-5"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <span class="stat-label">Inativos</span>
-          <div class="stat-body">
-            <div class="stat-value" id="statInactive">0</div>
-            <div class="stat-icon-block">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <rect x="6" y="4" width="4" height="16" rx="1"/>
-                <rect x="14" y="4" width="4" height="16" rx="1"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
     </div>
   </div>
+
 </div>
 
-<!-- ─── Modal ────────────────────────────────── -->
-<div class="modal-overlay" id="newAgentModal">
-  <div class="modal">
-    <div class="modal-header">
-      <span class="modal-title">Criar Agente</span>
-      <button class="modal-close" id="closeModal">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
-    </div>
-    <div class="modal-form">
-      <div class="form-group">
-        <label class="form-label">Nome do Agente</label>
-        <input class="form-input" type="text" id="agentName" style="padding-left:12px" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Modelo</label>
-        <select class="form-select" id="agentModel">
-          <option value="openai/gpt-4o">GPT-4o</option>
-          <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-          <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-          <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
-          <option value="google/gemini-pro-1.5">Gemini Pro 1.5</option>
-          <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B</option>
-          <option value="deepseek/deepseek-r1">DeepSeek R1</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Prompt do Sistema</label>
-        <textarea class="form-textarea" id="agentPrompt" rows="4"></textarea>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Status inicial</label>
-        <select class="form-select" id="agentStatus">
-          <option value="inactive">Inativo</option>
-          <option value="active">Ativo</option>
-          <option value="idle">Em espera</option>
-        </select>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-sm btn-sm-ghost" id="cancelBtn">Cancelar</button>
-      <button class="btn-sm btn-sm-accent" id="createAgentBtn">Criar Agente</button>
-    </div>
-  </div>
-</div>
+<div class="toast-container" id="toastContainer"></div>
 
-<script type="module" src="js/dashboard.js"></script>
 <script src="js/sidebar.js"></script>
+<script type="module" src="js/profile.js"></script>
 </body>
 </html>

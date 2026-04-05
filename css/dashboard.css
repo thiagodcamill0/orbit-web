@@ -5,6 +5,10 @@
 }
 
 /* ─── Sidebar ────────────────────────────────── */
+
+/* Easing: expo-out — fast start, decelerates gracefully */
+:root { --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1); }
+
 .sidebar {
   width: var(--sidebar-w);
   min-width: var(--sidebar-w);
@@ -13,14 +17,142 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  will-change: width;
+  transition: width 0.38s var(--ease-out-expo),
+              min-width 0.38s var(--ease-out-expo);
+}
+
+/* ─── Collapsed ──────────────────────────────── */
+.sidebar.collapsed {
+  width: 62px;
+  min-width: 62px;
+}
+
+/* ── Text labels: fade out fast, fade in with delay (stagger) */
+.nav-label,
+.sidebar-brand-name {
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: auto;
+  /* expand: appear after sidebar finishes growing */
+  opacity: 1;
+  transition: opacity 0.2s ease 0.26s;
+}
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .sidebar-brand-name {
+  opacity: 0;
+  pointer-events: none;
+  /* collapse: disappear immediately so sidebar can close clean */
+  transition: opacity 0.08s ease 0s;
+}
+
+/* ── Section labels: same stagger */
+.nav-section-label {
+  opacity: 1;
+  transition: opacity 0.2s ease 0.26s;
+}
+.sidebar.collapsed .nav-section-label {
+  opacity: 0;
+  transition: opacity 0.08s ease 0s;
+}
+
+/* ── Nav item: animate padding to center icon as sidebar shrinks.
+      At 62px sidebar, nav has 8px padding each side → 46px inner.
+      Icon is 15px → (46-15)/2 = 15.5px ≈ 16px centering padding. */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: padding 0.38s var(--ease-out-expo),
+              background 0.15s ease,
+              color 0.15s ease;
+}
+.sidebar.collapsed .nav-item { padding: 8px 16px; }
+
+/* ── User info */
+.user-info {
+  overflow: hidden;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  opacity: 1;
+  transition: opacity 0.2s ease 0.26s;
+}
+.sidebar.collapsed .user-info {
+  opacity: 0;
+  transition: opacity 0.08s ease 0s;
+}
+
+.user-settings {
+  flex-shrink: 0;
+  opacity: 1;
+  transition: opacity 0.2s ease 0.26s;
+}
+.sidebar.collapsed .user-settings {
+  opacity: 0;
+  transition: opacity 0.08s ease 0s;
+}
+
+/* ── Toggle button ───────────────────────────── */
+.sidebar-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.sidebar-toggle-btn:hover   { background: var(--bg-hover); color: var(--text-primary); }
+.sidebar-toggle-btn:active  { background: var(--bg-elevated); }
+
+.sidebar-toggle-btn .sidebar-chevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  pointer-events: none;
+  transition: transform 0.38s var(--ease-out-expo);
+}
+.sidebar.collapsed .sidebar-toggle-btn .sidebar-chevron {
+  transform: rotate(180deg);
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 18px 16px;
-  border-bottom: 1px solid var(--border);
+  justify-content: center;
+  padding: 20px 16px 18px;
+  position: relative;
+}
+
+/* Soft gradient separator */
+.sidebar-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--border-light) 30%,
+    var(--border-light) 70%,
+    transparent
+  );
 }
 
 .sidebar-brand {
@@ -29,40 +161,13 @@
   gap: 10px;
 }
 
-.sidebar-brand-icon {
-  width: 28px;
-  height: 28px;
-  background: var(--accent);
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 12px var(--accent-glow);
-  flex-shrink: 0;
-}
-
-.sidebar-brand-icon svg {
-  width: 14px;
-  height: 14px;
-  color: #fff;
-}
-
 .sidebar-brand-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   color: var(--text-primary);
 }
 
-.sidebar-chevron {
-  width: 16px;
-  height: 16px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color var(--transition);
-}
-
-.sidebar-chevron:hover { color: var(--text-secondary); }
 
 .sidebar-search {
   padding: 10px 12px;
@@ -196,15 +301,18 @@
   width: 30px;
   height: 30px;
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: #1c1c1c;
+  border: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
+  color: #404040;
   flex-shrink: 0;
+  overflow: hidden;
 }
+
+.user-avatar svg { width: 18px; height: 18px; }
+.user-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 .user-info {
   flex: 1;

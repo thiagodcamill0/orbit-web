@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>hub — Agentes</title>
+  <title>Orbit — Agentes</title>
   <link rel="stylesheet" href="css/global.css" />
   <link rel="stylesheet" href="css/dashboard.css" />
   <link rel="stylesheet" href="css/canvas.css" />
@@ -15,26 +15,7 @@
   <aside class="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-brand">
-        <div class="sidebar-brand-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-            <path d="M2 17l10 5 10-5"/>
-            <path d="M2 12l10 5 10-5"/>
-          </svg>
-        </div>
-        <span class="sidebar-brand-name">hub</span>
-      </div>
-      <svg class="sidebar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="15 18 9 12 15 6"/>
-      </svg>
-    </div>
-    <div class="sidebar-search">
-      <div class="sidebar-search-inner">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"/>
-          <path d="m21 21-4.35-4.35"/>
-        </svg>
-        <input class="sidebar-search-input" type="text" placeholder="Buscar..." />
+        <span class="sidebar-brand-name">Orbit</span>
       </div>
     </div>
     <nav class="sidebar-nav">
@@ -47,7 +28,7 @@
             <rect x="3" y="14" width="7" height="7" rx="1"/>
             <rect x="14" y="14" width="7" height="7" rx="1"/>
           </svg>
-          Home
+          <span class="nav-label">Home</span>
         </a>
         <a class="nav-item active" href="agents.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -56,20 +37,35 @@
             <circle cx="19" cy="9" r="2.5"/>
             <path d="M21.5 14c1.5.5 2.5 1.7 2.5 3"/>
           </svg>
-          Agentes
+          <span class="nav-label">Agentes</span>
         </a>
         <a class="nav-item" href="analytics.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
-          Analytics
+          <span class="nav-label">Analytics</span>
         </a>
-        <a class="nav-item" href="templates.html">
+        <a class="nav-item" href="security.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span class="nav-label">Security</span>
+        </a>
+        <a class="nav-item" href="results.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="18" height="18" rx="2"/>
-            <path d="M3 9h18M9 21V9"/>
+            <line x1="3" y1="9" x2="21" y2="9"/>
+            <line x1="3" y1="15" x2="21" y2="15"/>
+            <line x1="9" y1="3" x2="9" y2="21"/>
           </svg>
-          Templates
+          <span class="nav-label">Results</span>
+        </a>
+        <a class="nav-item" href="logs.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          <span class="nav-label">Logs</span>
         </a>
       </div>
       <div class="nav-section">
@@ -79,20 +75,33 @@
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
           </svg>
-          Integrações
+          <span class="nav-label">Integrações</span>
         </a>
         <a class="nav-item" href="settings.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
-          Configurações
+          <span class="nav-label">Configurações</span>
+        </a>
+        <a class="nav-item" href="billing.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="1" y="4" width="22" height="16" rx="2"/>
+            <line x1="1" y1="10" x2="23" y2="10"/>
+          </svg>
+          <span class="nav-label">Billing</span>
         </a>
       </div>
     </nav>
+
+    <button class="sidebar-toggle-btn" aria-label="Toggle sidebar">
+      <svg class="sidebar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
     <div class="sidebar-footer">
-      <div class="sidebar-user">
-        <div class="user-avatar">U</div>
+      <a class="sidebar-user" href="profile.html">
+        <div class="user-avatar"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5"/><path d="M3 20.5c0-4.14 4.03-7.5 9-7.5s9 3.36 9 7.5"/></svg></div>
         <div class="user-info">
           <div class="user-name">Usuário</div>
           <div class="user-role">Administrador</div>
@@ -100,7 +109,7 @@
         <svg class="user-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
         </svg>
-      </div>
+      </a>
     </div>
   </aside>
 
@@ -143,6 +152,12 @@
                 <circle cx="10" cy="18" r="2" fill="var(--bg-base)" stroke="currentColor"/>
               </svg>
             </button>
+            <button class="agent-action" data-action="subagent" title="Criar subagente">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="4" r="2"/><circle cx="4" cy="20" r="2"/><circle cx="20" cy="20" r="2"/>
+                <path d="M12 6v5M12 11l-6 7M12 11l6 7"/>
+              </svg>
+            </button>
           </div>
 
           <img class="agent-node-pokemon" id="pokemonSprite" src="" alt="" draggable="false" />
@@ -151,6 +166,14 @@
         </div>
 
       </div>
+
+      <!-- New agent button -->
+      <button class="canvas-new-btn" id="newAgentBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Novo agente
+      </button>
 
       <!-- Zoom controls -->
       <div class="canvas-controls">
@@ -266,6 +289,43 @@
   </div>
 
 </div>
+<!-- Create agent modal -->
+<div class="create-overlay" id="createOverlay">
+  <div class="create-modal">
+    <div class="create-modal-hd">
+      <span class="create-modal-title">Novo agente</span>
+      <button class="create-modal-close" id="createModalClose">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="create-modal-body">
+      <div class="create-field">
+        <label class="create-label">Nome</label>
+        <input class="create-input" type="text" id="createName" placeholder="Nome do agente" />
+      </div>
+      <div class="create-field">
+        <label class="create-label">Modelo</label>
+        <select class="create-select" id="createModel">
+          <option value="openai/gpt-4o">GPT-4o</option>
+          <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+          <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+          <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
+          <option value="google/gemini-pro-1.5">Gemini Pro 1.5</option>
+          <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B</option>
+          <option value="deepseek/deepseek-r1">DeepSeek R1</option>
+        </select>
+      </div>
+    </div>
+    <div class="create-modal-ft">
+      <button class="btn-sm btn-sm-ghost" id="createCancel">Cancelar</button>
+      <button class="btn-sm btn-sm-accent" id="createConfirm">Criar agente</button>
+    </div>
+  </div>
+</div>
+
 <script type="module" src="js/agents.js"></script>
+<script src="js/sidebar.js"></script>
 </body>
 </html>
