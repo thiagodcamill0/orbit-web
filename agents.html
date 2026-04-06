@@ -167,6 +167,28 @@
 
       </div>
 
+      <!-- New board button -->
+      <button class="canvas-board-btn" id="newBoardBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="3"/>
+        </svg>
+        Novo quadro
+      </button>
+
+      <!-- Color picker popover -->
+      <div class="board-color-popover" id="boardColorPopover">
+        <div class="board-color-swatch active" data-color="#1e3a5f" style="background:#1e3a5f" title="Azul"></div>
+        <div class="board-color-swatch" data-color="#3b2469" style="background:#3b2469" title="Roxo"></div>
+        <div class="board-color-swatch" data-color="#1a4230" style="background:#1a4230" title="Verde"></div>
+        <div class="board-color-swatch" data-color="#5c3010" style="background:#5c3010" title="Laranja"></div>
+        <div class="board-color-swatch" data-color="#561830" style="background:#561830" title="Rosa"></div>
+        <div class="board-color-swatch" data-color="#1e3040" style="background:#1e3040" title="Cinza azulado"></div>
+        <div class="board-color-sep"></div>
+        <div class="board-color-custom" title="Cor personalizada">
+          <input type="color" id="boardColorCustom" value="#2a3a52" />
+        </div>
+      </div>
+
       <!-- New agent button -->
       <button class="canvas-new-btn" id="newAgentBtn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -325,6 +347,7 @@
   </div>
 </div>
 
+<script src="js/boards.js"></script>
 <script type="module" src="js/agents.js"></script>
 <script src="js/sidebar.js"></script>
 </body>
