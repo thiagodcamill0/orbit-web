@@ -11,7 +11,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 13px 16px;
+  padding: 16px 20px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
   cursor: pointer;
@@ -24,11 +24,14 @@
 
 /* ─── Row Icon ───────────────────────────────── */
 .int-row-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #1e1e2e, #16161f);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow:
+    0 2px 6px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.07);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -168,11 +171,14 @@
 }
 
 .int-panel-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #1e1e2e, #16161f);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow:
+    0 2px 6px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.07);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -513,37 +519,65 @@
 .catalog-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin-bottom: 4px;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
 .catalog-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
-  padding: 14px 10px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: transparent;
+  gap: 12px;
+  padding: 28px 14px 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: linear-gradient(175deg, #1e1e1e, #161616);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
   cursor: pointer;
-  transition: all var(--transition);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
 }
-.catalog-item:hover { border-color: var(--border-light); background: var(--bg-elevated); }
-.catalog-item.selected { border-color: rgba(99,102,241,0.4); background: var(--accent-soft); }
+
+.catalog-item:hover {
+  border-color: rgba(255,255,255,0.14);
+  background: linear-gradient(175deg, #242424, #1a1a1a);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07);
+  transform: translateY(-2px);
+}
+
+.catalog-item.selected {
+  border-color: rgba(99,102,241,0.4);
+  background: linear-gradient(175deg, #1f1f28, #17171f);
+  box-shadow: 0 0 0 1px rgba(99,102,241,0.15), 0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(99,102,241,0.07);
+}
 
 .catalog-item-icon {
-  width: 34px; height: 34px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  width: 44px; height: 44px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #1e1e2e, #16161f);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow:
+    0 3px 8px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.07);
   display: flex; align-items: center; justify-content: center;
   font-size: 10px; font-weight: 700;
   color: var(--text-secondary);
 }
 
-.catalog-item-name { font-size: 11px; font-weight: 500; color: var(--text-primary); text-align: center; }
-.catalog-item-cat  { font-size: 10px; color: var(--text-muted); text-align: center; }
+.catalog-item-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: center;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.catalog-item-cat {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: -4px;
+}
 
 /* ─── Confirm Modal ──────────────────────────── */
 .confirm-modal { width: 400px; }

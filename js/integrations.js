@@ -1,12 +1,14 @@
+import { getIntegrationIcon } from './integration-icons.js';
+
 /* ─── Catalog (tipos disponíveis) ──────────────── */
 
 const CATALOG = [
+  // ── AI / LLM ────────────────────────────────────
   {
     id: 'openai',
     name: 'OpenAI',
-    initials: 'OA',
     category: 'AI / LLM',
-    desc: 'Acesso a modelos GPT-4, DALL-E e Whisper via API',
+    desc: 'Acesso a modelos GPT-4o, DALL-E e Whisper via API',
     fields: [
       { key: 'apiKey', label: 'API Key',         type: 'password', placeholder: 'sk-...' },
       { key: 'orgId',  label: 'Organization ID', type: 'text',     placeholder: 'org-...', optional: true },
@@ -14,8 +16,7 @@ const CATALOG = [
   },
   {
     id: 'anthropic',
-    name: 'Anthropic',
-    initials: 'AN',
+    name: 'Claude (Anthropic)',
     category: 'AI / LLM',
     desc: 'Modelos Claude Opus, Sonnet e Haiku',
     fields: [
@@ -23,9 +24,39 @@ const CATALOG = [
     ],
   },
   {
+    id: 'gemini',
+    name: 'Gemini (Google)',
+    category: 'AI / LLM',
+    desc: 'Modelos Gemini Pro e Flash via Google AI Studio',
+    fields: [
+      { key: 'apiKey',     label: 'API Key',    type: 'password', placeholder: 'AIza...' },
+      { key: 'projectId',  label: 'Project ID', type: 'text',     placeholder: 'my-project', optional: true },
+    ],
+  },
+  {
+    id: 'grok',
+    name: 'Grok (xAI)',
+    category: 'AI / LLM',
+    desc: 'Modelos Grok da xAI com acesso a dados em tempo real',
+    fields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'xai-...' },
+    ],
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    category: 'AI / LLM',
+    desc: 'Gateway unificado para centenas de modelos de IA via uma única API',
+    fields: [
+      { key: 'apiKey',   label: 'API Key',     type: 'password', placeholder: 'sk-or-...' },
+      { key: 'siteUrl',  label: 'Site URL',     type: 'text',     placeholder: 'https://meusite.com', optional: true },
+      { key: 'siteName', label: 'Site Name',    type: 'text',     placeholder: 'Meu App', optional: true },
+    ],
+  },
+  // ── Comunicação ──────────────────────────────────
+  {
     id: 'slack',
     name: 'Slack',
-    initials: 'SL',
     category: 'Comunicação',
     desc: 'Envie mensagens e notificações para canais do Slack',
     fields: [
@@ -33,10 +64,10 @@ const CATALOG = [
       { key: 'signingSecret', label: 'Signing Secret', type: 'password', placeholder: '...' },
     ],
   },
+  // ── Desenvolvimento ──────────────────────────────
   {
     id: 'github',
     name: 'GitHub',
-    initials: 'GH',
     category: 'Desenvolvimento',
     desc: 'Acesso a repositórios, issues e pull requests',
     fields: [
@@ -44,10 +75,10 @@ const CATALOG = [
       { key: 'org',   label: 'Organização',           type: 'text',     placeholder: 'my-org', optional: true },
     ],
   },
+  // ── Produtividade ────────────────────────────────
   {
     id: 'notion',
     name: 'Notion',
-    initials: 'NT',
     category: 'Produtividade',
     desc: 'Leia e escreva em páginas e databases do Notion',
     fields: [
@@ -58,7 +89,6 @@ const CATALOG = [
   {
     id: 'google-sheets',
     name: 'Google Sheets',
-    initials: 'GS',
     category: 'Produtividade',
     desc: 'Leia e escreva em planilhas do Google Sheets',
     fields: [
@@ -217,7 +247,7 @@ function renderRow(intData) {
 
   return `
     <div class="int-row ${panelOpen}" data-id="${intData.id}">
-      <div class="int-row-icon">${cat.initials}</div>
+      <div class="int-row-icon">${getIntegrationIcon(cat.id, 16)}</div>
       <div class="int-row-info">
         <div class="int-row-name">${cat.name}</div>
         <div class="int-row-cat">${cat.category}</div>
@@ -306,7 +336,7 @@ function openPanel(id) {
   const cat     = getCatalog(id);
   const intData = getInt(id);
 
-  document.getElementById('panelIcon').textContent    = cat.initials;
+  document.getElementById('panelIcon').innerHTML       = getIntegrationIcon(cat.id, 16);
   document.getElementById('panelName').textContent    = cat.name;
   document.getElementById('panelStatus').textContent  = statusLabel(intData.status);
 
@@ -616,7 +646,7 @@ function openCatalog() {
     const already = existing.has(c.id);
     return `
       <button class="catalog-item${already ? ' selected' : ''}" data-catalog-id="${c.id}" ${already ? 'disabled' : ''}>
-        <div class="catalog-item-icon">${c.initials}</div>
+        <div class="catalog-item-icon">${getIntegrationIcon(c.id, 18)}</div>
         <div class="catalog-item-name">${c.name}</div>
         <div class="catalog-item-cat">${already ? 'Já adicionado' : c.category}</div>
       </button>
