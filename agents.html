@@ -247,10 +247,33 @@
           </div>
 
           <div class="panel-field">
-            <label class="panel-label">Pokémon</label>
+            <label class="panel-label">Fonte de aparência</label>
+            <select class="panel-select" id="fieldApiSource">
+              <option value="gif">Padrão</option>
+              <option value="pokemon">Pokémon</option>
+            </select>
+          </div>
+
+          <div class="panel-field">
+            <label class="panel-label">Cor</label>
+            <div class="filter-swatches" id="filterSwatches">
+              <div class="filter-swatch active" data-filter="none"   style="background:#64748b" title="Padrão"></div>
+              <div class="filter-swatch"        data-filter="red"    style="background:#f87171" title="Vermelho"></div>
+              <div class="filter-swatch"        data-filter="orange" style="background:#fb923c" title="Laranja"></div>
+              <div class="filter-swatch"        data-filter="yellow" style="background:#fbbf24" title="Amarelo"></div>
+              <div class="filter-swatch"        data-filter="green"  style="background:#4ade80" title="Verde"></div>
+              <div class="filter-swatch"        data-filter="cyan"   style="background:#22d3ee" title="Ciano"></div>
+              <div class="filter-swatch"        data-filter="blue"   style="background:#60a5fa" title="Azul"></div>
+              <div class="filter-swatch"        data-filter="purple" style="background:#a78bfa" title="Roxo"></div>
+              <div class="filter-swatch"        data-filter="pink"   style="background:#f472b6" title="Rosa"></div>
+            </div>
+          </div>
+
+          <div class="panel-field">
+            <label class="panel-label" id="fieldSpriteIdLabel">ID do personagem (1–999)</label>
             <div class="pokemon-picker-row">
               <input class="panel-input pokemon-id-input" type="number" id="fieldPokemonId"
-                     min="1" max="151" placeholder="1–151" />
+                     min="1" max="999" placeholder="1–999" />
               <img class="pokemon-picker-preview" id="pokemonPickerPreview" src="" alt="" />
             </div>
           </div>

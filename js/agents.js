@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     world = document.getElementById('canvasWorld');
     label = document.getElementById('zoomLabel');
     node.el = document.getElementById('agentNode');
-    loadPokemon();
+    loadSprite();
     initGraph();
     centerOnNode();
     bindCanvas();
@@ -52,24 +52,54 @@ document.addEventListener('DOMContentLoaded', () => {
     bindCreateModal();
     requestAnimationFrame(loop);
 });
-// ─── Pokémon ──────────────────────────────────────────────────────────────────
-function loadPokemon() {
+// ─── Color filters ────────────────────────────────────────────────────────────
+const COLOR_FILTERS = {
+    none:   'none',
+    red:    'hue-rotate(310deg) saturate(4) brightness(0.85)',
+    orange: 'hue-rotate(20deg) saturate(4) brightness(0.85)',
+    yellow: 'hue-rotate(50deg) saturate(4) brightness(0.9)',
+    green:  'hue-rotate(100deg) saturate(4) brightness(0.8)',
+    cyan:   'hue-rotate(165deg) saturate(4) brightness(0.85)',
+    blue:   'hue-rotate(210deg) saturate(4) brightness(0.85)',
+    purple: 'hue-rotate(260deg) saturate(4) brightness(0.85)',
+    pink:   'hue-rotate(290deg) saturate(4) brightness(0.9)',
+};
+
+function applyColorFilter(el, filterKey) {
+    const f = COLOR_FILTERS[filterKey] ?? 'none';
+    el.dataset.colorFilter = filterKey || 'none';
+    el.querySelectorAll('.agent-node-pokemon').forEach(img => { img.style.filter = f; });
+}
+// ─── Sprite source ────────────────────────────────────────────────────────────
+// 'gif' = local robot gif | 'pokemon' = PokeAPI HOME sprites
+function spriteUrl(id, source) {
+    const src = source || currentApiSource;
+    if (src === 'pokemon') {
+        return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${id}.png`;
+    }
+    return 'assets/images/robot-idle.gif';
+}
+
+function loadSprite() {
     const img = document.getElementById('pokemonSprite');
     if (!img)
         return;
-    // Pokémon HOME sprites — 3D renders, transparent PNG
-    // IDs 1–898 (gens 1–8, avoids special forms that may be missing)
-    const id = Math.floor(Math.random() * 151) + 1;
-    currentPokemonId = id;
-    const url = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${id}.png`;
-    img.src = url;
+    let id = 1;
+    if (currentApiSource === 'pokemon') {
+        id = Math.floor(Math.random() * 151) + 1;
+        currentPokemonId = id;
+    }
+    img.src = spriteUrl(id);
     img.style.opacity = '0';
     img.style.transition = 'opacity 0.4s ease';
     img.onload = () => { img.style.opacity = '1'; };
     img.onerror = () => {
-        // fallback to official artwork if home sprite missing
-        img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
-        img.onload = () => { img.style.opacity = '1'; };
+        if (currentApiSource === 'pokemon') {
+            img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
+            img.onload = () => { img.style.opacity = '1'; };
+        } else {
+            img.style.opacity = '1';
+        }
     };
 }
 // ─── Center on node ───────────────────────────────────────────────────────────
@@ -408,14 +438,15 @@ function subagentPos(parentId) {
 
 function spawnSubagent(parentId) {
     const pos = subagentPos(parentId);
-    const pokeId = Math.floor(Math.random() * 151) + 1;
-    const url    = pokemonUrl(pokeId);
+    const pokeId = currentApiSource === 'pokemon' ? Math.floor(Math.random() * 151) + 1 : 1;
+    const url    = spriteUrl(pokeId);
 
     const el = document.createElement('div');
     el.className = 'agent-node';
     el.style.left = `${pos.x}px`;
     el.style.top  = `${pos.y}px`;
     el.dataset.pokemonId  = String(pokeId);
+    el.dataset.apiSource  = currentApiSource;
     el.dataset.agentName  = 'subagente';
     el.dataset.agentModel = 'openai/gpt-4o-mini';
     el.innerHTML = `
@@ -457,8 +488,12 @@ function spawnSubagent(parentId) {
     const img = el.querySelector('.agent-node-pokemon');
     img.onload  = () => { img.style.opacity = '1'; };
     img.onerror = () => {
-        img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokeId}.png`;
-        img.onload = () => { img.style.opacity = '1'; };
+        if (el.dataset.apiSource === 'pokemon') {
+            img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokeId}.png`;
+            img.onload = () => { img.style.opacity = '1'; };
+        } else {
+            img.style.opacity = '1';
+        }
     };
 
     // Register and connect
@@ -518,15 +553,16 @@ function spawnAgent(name, model) {
     const hx = NODE_HX + offsetX;
     const hy = NODE_HY;
 
-    const id  = Math.floor(Math.random() * 151) + 1;
-    const url = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${id}.png`;
+    const id  = currentApiSource === 'pokemon' ? Math.floor(Math.random() * 151) + 1 : 1;
+    const url = spriteUrl(id);
 
     const el = document.createElement('div');
     el.className = 'agent-node';
     el.style.left = `${hx}px`;
     el.style.top  = `${hy}px`;
-    el.dataset.pokemonId = String(id);
-    el.dataset.agentName = name;
+    el.dataset.pokemonId  = String(id);
+    el.dataset.apiSource  = currentApiSource;
+    el.dataset.agentName  = name;
     el.dataset.agentModel = model;
     el.innerHTML = `
       <div class="agent-actions">
@@ -570,8 +606,12 @@ function spawnAgent(name, model) {
     const img = el.querySelector('.agent-node-pokemon');
     img.onload  = () => { img.style.opacity = '1'; };
     img.onerror = () => {
-        img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
-        img.onload = () => { img.style.opacity = '1'; };
+        if (el.dataset.apiSource === 'pokemon') {
+            img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
+            img.onload = () => { img.style.opacity = '1'; };
+        } else {
+            img.style.opacity = '1';
+        }
     };
 
     const agentId = registerAgent(el, hx, hy, null);
@@ -661,26 +701,44 @@ function openPanelForNode(el, action) {
     const panel      = document.getElementById('agentPanel');
     const nameInput  = document.getElementById('fieldName');
     const modelSel   = document.getElementById('fieldModel');
+    const apiSel     = document.getElementById('fieldApiSource');
     const panelName  = document.getElementById('panelAgentName');
     const miniSprite = document.getElementById('panelPokemonMini');
     const mainSprite = el.querySelector('.agent-node-pokemon');
     const pickerPrev = document.getElementById('pokemonPickerPreview');
     const pokemonInp = document.getElementById('fieldPokemonId');
+    const idLabel    = document.getElementById('fieldSpriteIdLabel');
     const labelEl    = el.querySelector('.agent-node-label');
 
     // Sync panel fields from this node's data
     const agentName  = el.dataset.agentName  || labelEl?.textContent || 'agente';
     const agentModel = el.dataset.agentModel || 'openai/gpt-4o';
+    const nodeSource = el.dataset.apiSource  || currentApiSource;
     const pokemonId  = parseInt(el.dataset.pokemonId) || currentPokemonId;
 
-    nameInput.value  = agentName;
+    nameInput.value       = agentName;
     panelName.textContent = agentName;
-    modelSel.value   = agentModel;
-    pokemonInp.value = String(pokemonId);
-    miniSprite.src   = mainSprite.src;
-    pickerPrev.src   = mainSprite.src;
+    modelSel.value        = agentModel;
+    if (apiSel) apiSel.value = nodeSource;
+    pokemonInp.value      = String(pokemonId);
+    miniSprite.src        = mainSprite.src;
+    pickerPrev.src        = mainSprite.src;
     pickerPrev.style.opacity = '1';
-    currentPokemonId = pokemonId;
+    currentPokemonId      = pokemonId;
+    updateSpriteIdLabel(idLabel, nodeSource);
+
+    function applySprite(id, src) {
+        const url = spriteUrl(id, src);
+        el.dataset.pokemonId = String(id);
+        el.dataset.apiSource = src;
+        pickerPrev.style.opacity = '0';
+        pickerPrev.src = url;
+        pickerPrev.onload = () => { pickerPrev.style.opacity = '1'; };
+        mainSprite.style.opacity = '0';
+        mainSprite.src = url;
+        mainSprite.onload = () => { mainSprite.style.opacity = '1'; };
+        miniSprite.src = url;
+    }
 
     // Wire name changes back to this node's label + dataset
     nameInput.oninput = () => {
@@ -692,22 +750,51 @@ function openPanelForNode(el, action) {
     // Wire model changes back to dataset
     modelSel.onchange = () => { el.dataset.agentModel = modelSel.value; };
 
-    // Wire pokemon picker back to this node's sprite
+    // Wire API source selector
+    if (apiSel) {
+        apiSel.onchange = () => {
+            const src = apiSel.value;
+            currentApiSource = src;
+            el.dataset.apiSource = src;
+            updateSpriteIdLabel(idLabel, src);
+            if (src === 'pokemon') {
+                const newId = Math.min(parseInt(pokemonInp.value) || 1, 898);
+                pokemonInp.max   = '898';
+                pokemonInp.value = String(newId);
+                currentPokemonId = newId;
+                applySprite(newId, src);
+            } else {
+                applySprite(1, src);
+            }
+        };
+    }
+
+    // Wire sprite ID picker back to this node's sprite
     pokemonInp.oninput = () => {
+        const src = (apiSel?.value) || nodeSource;
+        if (src !== 'pokemon') return;
         const val = parseInt(pokemonInp.value);
         if (!isNaN(val) && val >= 1 && val <= 898) {
-            const url = pokemonUrl(val);
             currentPokemonId = val;
-            el.dataset.pokemonId = String(val);
-            pickerPrev.style.opacity = '0';
-            pickerPrev.src = url;
-            pickerPrev.onload = () => { pickerPrev.style.opacity = '1'; };
-            mainSprite.style.opacity = '0';
-            mainSprite.src = url;
-            mainSprite.onload = () => { mainSprite.style.opacity = '1'; };
-            miniSprite.src = url;
+            applySprite(val, src);
         }
     };
+
+    // Wire color filter swatches
+    const swatchContainer = document.getElementById('filterSwatches');
+    if (swatchContainer) {
+        const currentFilter = el.dataset.colorFilter || 'none';
+        swatchContainer.querySelectorAll('.filter-swatch').forEach(sw => {
+            sw.classList.toggle('active', sw.dataset.filter === currentFilter);
+            sw.onclick = () => {
+                swatchContainer.querySelectorAll('.filter-swatch').forEach(s => s.classList.remove('active'));
+                sw.classList.add('active');
+                const f = sw.dataset.filter;
+                applyColorFilter(el, f);
+                miniSprite.style.filter = COLOR_FILTERS[f] ?? 'none';
+            };
+        });
+    }
 
     panel.classList.add('open');
 
@@ -739,7 +826,19 @@ function bindButtons() {
 }
 // ─── Panel ────────────────────────────────────────────────────────────────────
 let currentPokemonId = 1;
+let currentApiSource = 'gif'; // 'gif' | 'pokemon'
 let panelTargetEl = null; // which node the panel is currently editing
+
+function updateSpriteIdLabel(labelEl, source) {
+    if (!labelEl) return;
+    const field = labelEl.closest('.panel-field');
+    if (source === 'pokemon') {
+        labelEl.textContent = 'Pokémon (1–898)';
+        if (field) field.style.display = '';
+    } else {
+        if (field) field.style.display = 'none';
+    }
+}
 
 function deleteAgent(el) {
     if (!el) return;
@@ -809,49 +908,9 @@ function bindPanel() {
             chip.classList.add('active');
         });
     });
-    // Pokémon picker
-    const pokemonInput = document.getElementById('fieldPokemonId');
-    const pickerPreview = document.getElementById('pokemonPickerPreview');
-    const mainSprite = document.getElementById('pokemonSprite');
-    const miniSprite = document.getElementById('panelPokemonMini');
-    function applyPokemonId(id) {
-        id = Math.min(898, Math.max(1, id));
-        currentPokemonId = id;
-        const url = pokemonUrl(id);
-        // Update picker preview
-        pickerPreview.style.opacity = '0';
-        pickerPreview.src = url;
-        pickerPreview.onload = () => { pickerPreview.style.opacity = '1'; };
-        // Update canvas sprite
-        mainSprite.style.opacity = '0';
-        mainSprite.src = url;
-        mainSprite.onload = () => { mainSprite.style.opacity = '1'; };
-        // Update header mini
-        miniSprite.src = url;
-    }
-    pokemonInput?.addEventListener('input', () => {
-        const val = parseInt(pokemonInput.value);
-        if (!isNaN(val) && val >= 1 && val <= 898)
-            applyPokemonId(val);
-    });
 }
 function openPanel() {
-    panelTargetEl = node.el;
-    const panel = document.getElementById('agentPanel');
-    const mainSprite = document.getElementById('pokemonSprite');
-    const miniSprite = document.getElementById('panelPokemonMini');
-    const pickerPreview = document.getElementById('pokemonPickerPreview');
-    const pokemonInput = document.getElementById('fieldPokemonId');
-    // Sync current pokemon into panel
-    miniSprite.src = mainSprite.src;
-    pickerPreview.src = mainSprite.src;
-    pickerPreview.style.opacity = '1';
-    if (pokemonInput)
-        pokemonInput.value = String(currentPokemonId);
-    panel.classList.add('open');
-}
-function pokemonUrl(id) {
-    return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${id}.png`;
+    openPanelForNode(node.el, 'settings');
 }
 // ─── Utils ────────────────────────────────────────────────────────────────────
 function clamp(v, min, max) {
