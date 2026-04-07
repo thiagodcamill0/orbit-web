@@ -166,17 +166,8 @@
               transform 0.32s cubic-bezier(0.16,1,0.3,1) 195ms,
               color 0.15s ease;
 }
-.agent-node.editing .agent-action:nth-child(5) {
-  transition: opacity 0.32s cubic-bezier(0.16,1,0.3,1) 260ms,
-              transform 0.32s cubic-bezier(0.16,1,0.3,1) 260ms,
-              color 0.15s ease;
-}
 
-/* ─── Edit mode: pokemon glow sutil ─────────── */
-
-.agent-node.editing .agent-node-pokemon {
-  filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.13));
-}
+/* ─── Edit mode ──────────────────────────────── */
 
 .agent-node.editing .agent-node-label {
   color: rgba(255, 255, 255, 0.55);
@@ -191,7 +182,6 @@
 
 .agent-node.dragging .agent-node-pokemon {
   transform: translateY(-3px) scale(1.02);
-  filter: drop-shadow(0 0 14px rgba(255,255,255,0.13));
 }
 
 .agent-node.dragging .agent-node-shadow {

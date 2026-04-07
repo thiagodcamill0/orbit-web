@@ -251,13 +251,13 @@ function bindNode() {
     window.addEventListener('mouseup', () => {
         clearTimeout(node.holdTimer);
         if (el._quickClick && !editMode) {
-            enterEditMode(); // quick click = select agent, enter edit mode
+            enterEditMode();
+            openPanel();
         }
         el._quickClick = false;
         if (node.dragging) {
             node.dragging = false;
             el.classList.remove('dragging');
-            // Stay in edit mode
         }
     });
     // Action buttons
@@ -281,15 +281,8 @@ function handleAction(action) {
             openPanel();
             setTimeout(() => document.getElementById('fieldPrompt')?.focus(), 320);
             break;
-        case 'status': {
-            const chips = Array.from(document.querySelectorAll('.status-chip'));
-            const active = chips.findIndex(c => c.classList.contains('active'));
-            chips.forEach(c => c.classList.remove('active'));
-            chips[(active + 1) % chips.length].classList.add('active');
-            break;
-        }
-        case 'settings':
-            openPanel();
+        case 'delete':
+            deleteAgent(node.el);
             break;
         case 'subagent':
             spawnSubagent(node.el.dataset.agentId);
@@ -463,17 +456,12 @@ function spawnSubagent(parentId) {
             <line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="13" y2="14"/>
           </svg>
         </button>
-        <button class="agent-action" data-action="status" title="Mudar status">
+        <button class="agent-action" data-action="delete" title="Excluir agente">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
-          </svg>
-        </button>
-        <button class="agent-action" data-action="settings" title="Configurações">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
-            <circle cx="8"  cy="6"  r="2" fill="var(--bg-base)" stroke="currentColor"/>
-            <circle cx="16" cy="12" r="2" fill="var(--bg-base)" stroke="currentColor"/>
-            <circle cx="10" cy="18" r="2" fill="var(--bg-base)" stroke="currentColor"/>
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            <path d="M10 11v6M14 11v6"/>
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
           </svg>
         </button>
       </div>
@@ -579,20 +567,12 @@ function spawnAgent(name, model) {
             <line x1="9" y1="14" x2="13" y2="14"/>
           </svg>
         </button>
-        <button class="agent-action" data-action="status" title="Mudar status">
+        <button class="agent-action" data-action="delete" title="Excluir agente">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <circle cx="12" cy="12" r="9"/>
-            <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
-          </svg>
-        </button>
-        <button class="agent-action" data-action="settings" title="Configurações">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <line x1="4" y1="6" x2="20" y2="6"/>
-            <line x1="4" y1="12" x2="20" y2="12"/>
-            <line x1="4" y1="18" x2="20" y2="18"/>
-            <circle cx="8"  cy="6"  r="2" fill="var(--bg-base)" stroke="currentColor"/>
-            <circle cx="16" cy="12" r="2" fill="var(--bg-base)" stroke="currentColor"/>
-            <circle cx="10" cy="18" r="2" fill="var(--bg-base)" stroke="currentColor"/>
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            <path d="M10 11v6M14 11v6"/>
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
           </svg>
         </button>
       </div>
@@ -670,6 +650,7 @@ function bindExtraNode(el, initX, initY, agentId) {
         if (el._quickClick && !localEdit) {
             localEdit = true;
             el.classList.add('editing');
+            openPanelForNode(el, 'settings');
         }
         el._quickClick = false;
         state.dragging = false;

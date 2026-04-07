@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>orbit — Results</title>
+  <title>Orbit — Results</title>
   <link rel="stylesheet" href="css/global.css" />
   <link rel="stylesheet" href="css/dashboard.css" />
+  <link rel="stylesheet" href="css/chat.css" />
 </head>
 <body>
 <div class="app">
@@ -112,15 +113,67 @@
   </aside>
 
   <div class="main">
-    <div class="content">
-      <div class="page-header">
-        <div class="page-title">Results</div>
-        <div class="page-desc">Resultados das execuções dos seus agentes de IA</div>
+    <div class="chat-shell">
+
+      <!-- ── Sidebar de conversas ── -->
+      <div class="chat-sidebar">
+        <div class="chat-sidebar-header">
+          <span class="chat-sidebar-title">Conversas</span>
+        </div>
+        <div class="chat-sidebar-list" id="chatListBody">
+          <!-- preenchido pelo JS -->
+        </div>
       </div>
+
+      <!-- ── Área principal ── -->
+      <div class="chat-main">
+
+        <!-- Estado vazio -->
+        <div class="chat-empty-view" id="chatEmptyView">
+          <div class="chat-empty-icon">
+            <img src="assets/images/robot-idle.gif" alt="" />
+          </div>
+          <span class="chat-empty-title">Selecione uma conversa</span>
+          <span class="chat-empty-sub">Escolha um agente ao lado para começar</span>
+        </div>
+
+        <!-- Conversa ativa -->
+        <div class="chat-conv-view hidden" id="chatConvView">
+
+          <div class="chat-header">
+            <div class="chat-header-avatar">
+              <img id="chatHeaderAvatar" src="" alt="" />
+            </div>
+            <div class="chat-header-info">
+              <span class="chat-header-name" id="chatHeaderName"></span>
+              <span class="chat-header-status">
+                <span class="chat-status-dot"></span>Online
+              </span>
+            </div>
+          </div>
+
+          <div class="chat-messages" id="chatMessages"></div>
+
+          <div class="chat-input-area">
+            <div class="chat-input-row">
+              <textarea class="chat-input" id="chatInput" rows="1"></textarea>
+              <button class="chat-send-btn" id="chatSendBtn" title="Enviar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </div>
   </div>
 
 </div>
 <script src="js/sidebar.js"></script>
+<script src="js/chat.js"></script>
 </body>
 </html>
