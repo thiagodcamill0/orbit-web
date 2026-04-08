@@ -1,75 +1,52 @@
 /**
  * login.js — Orbit Auth
  *
- * Separa UI de lógica de autenticação.
- * Para conectar ao backend, implemente a função `AuthService.login()`.
+ * Autenticação via Supabase Auth.
+ * Depende de: supabase-client.js (deve ser carregado antes)
  */
 
-/* ─── Auth Service ───────────────────────────────────────────────────────────
- * Substitua o corpo de `login()` pela chamada real ao seu backend.
- * O contrato de retorno deve ser mantido.
- */
+/* ─── Mensagens de erro amigáveis ────────────────────────────────────────── */
+function friendlyAuthError(message) {
+  if (!message) return 'Ocorreu um erro. Tente novamente.';
+  const m = message.toLowerCase();
+  if (m.includes('invalid login credentials'))  return 'E-mail ou senha incorretos.';
+  if (m.includes('email not confirmed'))        return 'Confirme seu e-mail antes de entrar.';
+  if (m.includes('too many requests'))          return 'Muitas tentativas. Aguarde alguns minutos.';
+  if (m.includes('user not found'))             return 'E-mail ou senha incorretos.';
+  return 'Ocorreu um erro. Tente novamente.';
+}
+
+/* ─── Auth Service ───────────────────────────────────────────────────────── */
 const AuthService = {
-  /**
-   * @param {{ email: string, password: string }} credentials
-   * @returns {Promise<{ token: string, user: object }>}
-   */
   async login({ email, password }) {
-    // TODO: substituir pela chamada real ao backend
-    // Exemplo com fetch:
-    //
-    // const res = await fetch('/api/auth/login', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ email, password }),
-    // });
-    // if (!res.ok) {
-    //   const err = await res.json().catch(() => ({}));
-    //   throw new Error(err.message || 'Falha na autenticação');
-    // }
-    // return res.json();
-
-    // Simulação para desenvolvimento
-    await new Promise(r => setTimeout(r, 1200));
-    if (email === 'demo@orbit.ai' && password === 'orbit123') {
-      return { token: 'demo-token', user: { name: 'Demo', email } };
-    }
-    throw new Error('E-mail ou senha incorretos.');
+    const { data, error } = await db.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(friendlyAuthError(error.message));
+    return data;
   },
 
-  saveSession(token, remember) {
-    const storage = remember ? localStorage : sessionStorage;
-    storage.setItem('orbit_token', token);
+  async isAuthenticated() {
+    const { data: { session } } = await db.auth.getSession();
+    return session !== null;
   },
 
-  getToken() {
-    return localStorage.getItem('orbit_token') || sessionStorage.getItem('orbit_token');
-  },
-
-  isAuthenticated() {
-    return Boolean(this.getToken());
-  },
-
-  logout() {
-    localStorage.removeItem('orbit_token');
-    sessionStorage.removeItem('orbit_token');
+  async logout() {
+    await db.auth.signOut();
     window.location.href = 'login.html';
   },
 };
 
-/* ─── Redirect se já autenticado ────────────────────────────────────────────
- * Remove este bloco se quiser desabilitar o redirect automático.
- */
-if (AuthService.isAuthenticated()) {
-  window.location.href = 'index.html';
-}
+/* ─── Redirect se já autenticado ─────────────────────────────────────────── */
+(async () => {
+  if (await AuthService.isAuthenticated()) {
+    window.location.href = 'index.html';
+  }
+})();
 
-/* ─── UI Controller ─────────────────────────────────────────────────────── */
+/* ─── UI Controller ──────────────────────────────────────────────────────── */
 const LoginUI = (() => {
   const form       = document.getElementById('loginForm');
   const emailInput = document.getElementById('email');
   const pwInput    = document.getElementById('password');
-  const rememberCb = document.getElementById('rememberMe');
   const togglePw   = document.getElementById('togglePw');
   const eyeIcon    = document.getElementById('eyeIcon');
   const loginBtn   = document.getElementById('loginBtn');
@@ -125,12 +102,10 @@ const LoginUI = (() => {
     const isHidden = pwInput.type === 'password';
     pwInput.type = isHidden ? 'text' : 'password';
     eyeIcon.innerHTML = isHidden
-      ? /* olho fechado */
-        `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+      ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
          <line x1="1" y1="1" x2="23" y2="23"/>`
-      : /* olho aberto */
-        `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
          <circle cx="12" cy="12" r="3"/>`;
   });
 
@@ -150,7 +125,6 @@ const LoginUI = (() => {
 
     const email    = emailInput.value.trim();
     const password = pwInput.value;
-    const remember = rememberCb.checked;
 
     const emailErr = validateEmail(email);
     const pwErr    = validatePassword(password);
@@ -164,11 +138,10 @@ const LoginUI = (() => {
     setLoading(true);
 
     try {
-      const { token } = await AuthService.login({ email, password });
-      AuthService.saveSession(token, remember);
+      await AuthService.login({ email, password });
       window.location.href = 'index.html';
     } catch (err) {
-      showError(err.message || 'Ocorreu um erro. Tente novamente.');
+      showError(err.message);
       setLoading(false);
       pwInput.value = '';
       pwInput.focus();
@@ -178,7 +151,6 @@ const LoginUI = (() => {
   /* ── Esqueci minha senha ───────────────────────────────────── */
   document.getElementById('forgotLink').addEventListener('click', (e) => {
     e.preventDefault();
-    // TODO: abrir fluxo de recuperação de senha
     alert('Recuperação de senha: em breve.');
   });
 
