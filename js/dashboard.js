@@ -1,84 +1,145 @@
 // ─── State ────────────────────────────────────────────────────────────────────
 const state = {
-    agents: [],
-    view: 'grid',
-    filter: 'all',
+  agents: [],   // each agent: DB fields + { status } from localStorage
+  view: localStorage.getItem('orbit_agents_view') ?? 'grid',
+  filter: 'all',
 };
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-    loadAgentsFromStorage();
-    bindNav();
-    bindTopbar();
-    bindFilters();
-    bindViewToggle();
-    bindModal();
-    render();
+document.addEventListener('orbitSessionReady', async () => {
+  const dismiss = toastLoading('Carregando agentes...');
+  await loadAgents();
+  dismiss();
+  bindFilters();
+  bindViewToggle();
+  render();
+  if (state.view === 'list') {
+    document.getElementById('listView')?.classList.add('active');
+    document.getElementById('gridView')?.classList.remove('active');
+  }
 });
-// ─── Storage ──────────────────────────────────────────────────────────────────
-function loadAgentsFromStorage() {
-    try {
-        const raw = localStorage.getItem('agenthub_agents');
-        if (raw)
-            state.agents = JSON.parse(raw);
-    }
-    catch {
-        state.agents = [];
-    }
+
+// ─── Status (localStorage) ────────────────────────────────────────────────────
+// Status is not stored in the DB — it lives in localStorage, keyed by agent ID.
+// This keeps the schema stable while allowing filter/stat functionality in the UI.
+
+function getStatusMap() {
+  try { return JSON.parse(localStorage.getItem('orbit_agent_status') ?? '{}'); }
+  catch { return {}; }
 }
-function saveAgentsToStorage() {
-    localStorage.setItem('agenthub_agents', JSON.stringify(state.agents));
+
+function saveStatus(id, status) {
+  const map = getStatusMap();
+  map[id] = status;
+  localStorage.setItem('orbit_agent_status', JSON.stringify(map));
 }
+
+function removeStatus(id) {
+  const map = getStatusMap();
+  delete map[id];
+  localStorage.setItem('orbit_agent_status', JSON.stringify(map));
+}
+
+function enrichWithStatus(agents) {
+  const map = getStatusMap();
+  return agents.map(a => ({ ...a, status: map[a.id] ?? 'inactive' }));
+}
+
+// ─── Supabase ─────────────────────────────────────────────────────────────────
+async function loadAgents() {
+  const { data, error } = await db
+    .from('agents')
+    .select('id, name, model_id, system_prompt, description, created_at')
+    .eq('workspace_id', OrbitSession.workspaceId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    toast('Erro ao carregar agentes', 'error');
+    return;
+  }
+  state.agents = enrichWithStatus(data ?? []);
+}
+
+async function softDeleteAgent(id) {
+  const { error } = await db
+    .from('agents')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('workspace_id', OrbitSession.workspaceId);
+
+  if (error) throw new Error(error.message);
+}
+
 // ─── Render ───────────────────────────────────────────────────────────────────
 function render() {
-    renderStats();
-    renderAgents();
-    updateBadge();
+  renderStats();
+  renderAgents();
+  updateBadge();
 }
+
 function renderStats() {
-    const total = state.agents.length;
-    const active = state.agents.filter(a => a.status === 'active').length;
-    const inactive = state.agents.filter(a => a.status === 'inactive').length;
-    const models = new Set(state.agents.map(a => a.model)).size;
-    setText('statTotal', total.toString());
-    setText('statActive', active.toString());
-    setText('statInactive', inactive.toString());
-    setText('statModels', models.toString());
+  const total = state.agents.length;
+  const active = state.agents.filter(a => a.status === 'active').length;
+  const inactive = state.agents.filter(a => a.status === 'inactive').length;
+  const models = new Set(state.agents.map(a => a.model_id).filter(Boolean)).size;
+  setText('statTotal', total.toString());
+  setText('statActive', active.toString());
+  setText('statInactive', inactive.toString());
+  setText('statModels', models.toString());
 }
+
 function renderAgents() {
-    const container = document.getElementById('agentContainer');
-    const filtered = filterAgents();
-    if (filtered.length === 0) {
-        container.innerHTML = emptyStateHTML();
-        return;
-    }
-    if (state.view === 'grid') {
-        container.className = 'agent-grid';
-        container.innerHTML = filtered.map(agentCardHTML).join('');
-    }
-    else {
-        container.className = 'agent-list';
-        container.innerHTML = filtered.map(agentRowHTML).join('');
-    }
-    bindAgentActions();
+  const container = document.getElementById('agentContainer');
+  if (!container) return;
+  const filtered = filterAgents();
+  if (filtered.length === 0) {
+    container.innerHTML = emptyStateHTML();
+    return;
+  }
+  if (state.view === 'grid') {
+    container.className = 'agent-grid';
+    container.innerHTML = filtered.map(agentCardHTML).join('');
+  } else {
+    container.className = 'agent-list';
+    container.innerHTML = filtered.map(agentRowHTML).join('');
+  }
+  bindAgentActions();
 }
+
 function filterAgents() {
-    if (state.filter === 'all')
-        return state.agents;
-    return state.agents.filter(a => a.status === state.filter);
+  if (state.filter === 'all') return state.agents;
+  return state.agents.filter(a => a.status === state.filter);
 }
+
 function updateBadge() {
-    const badge = document.getElementById('agentCount');
-    if (badge)
-        badge.textContent = state.agents.length.toString();
+  const badge = document.getElementById('agentCount');
+  if (badge) badge.textContent = state.agents.length.toString();
 }
+
 // ─── HTML Templates ───────────────────────────────────────────────────────────
+const ICONS = [
+  { emoji: '🤖', cls: 'agent-icon-indigo' },
+  { emoji: '⚡', cls: 'agent-icon-violet' },
+  { emoji: '🔮', cls: 'agent-icon-cyan' },
+  { emoji: '🧠', cls: 'agent-icon-rose' },
+  { emoji: '🛠️', cls: 'agent-icon-amber' },
+  { emoji: '✨', cls: 'agent-icon-emerald' },
+];
+
+function agentIcon(id) {
+  const seed = id.slice(-8).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return ICONS[seed % ICONS.length];
+}
+
 function agentCardHTML(agent) {
-    const statusLabel = { active: 'Ativo', idle: 'Em espera', inactive: 'Inativo' }[agent.status];
-    const modelShort = agent.model.split('/').pop() ?? agent.model;
-    return `
+  const statusLabel = { active: 'Ativo', idle: 'Em espera', inactive: 'Inativo' }[agent.status] ?? agent.status;
+  const modelShort = (agent.model_id ?? '').split('/').pop() || '—';
+  const { emoji, cls } = agentIcon(agent.id);
+  return `
     <div class="agent-card" data-id="${agent.id}">
       <div class="agent-card-top">
-        <div class="agent-icon ${agent.iconClass}">${agent.emoji}</div>
+        <div class="agent-icon ${cls}">${emoji}</div>
         <div class="agent-status status-${agent.status}">
           <span class="agent-status-dot"></span>
           ${statusLabel}
@@ -89,24 +150,12 @@ function agentCardHTML(agent) {
       <div class="agent-meta">
         <div class="agent-meta-item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          ${agent.calls}
-        </div>
-        <div class="agent-meta-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/>
             <polyline points="12 6 12 12 16 14"/>
           </svg>
-          ${timeAgo(new Date(agent.createdAt))}
+          ${timeAgo(new Date(agent.created_at))}
         </div>
         <div class="agent-card-actions">
-          <button class="icon-btn" data-action="edit" data-id="${agent.id}" title="Editar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-          </button>
           <button class="icon-btn" data-action="delete" data-id="${agent.id}" title="Remover">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
@@ -120,12 +169,14 @@ function agentCardHTML(agent) {
     </div>
   `;
 }
+
 function agentRowHTML(agent) {
-    const statusLabel = { active: 'Ativo', idle: 'Em espera', inactive: 'Inativo' }[agent.status];
-    const modelShort = agent.model.split('/').pop() ?? agent.model;
-    return `
+  const statusLabel = { active: 'Ativo', idle: 'Em espera', inactive: 'Inativo' }[agent.status] ?? agent.status;
+  const modelShort = (agent.model_id ?? '').split('/').pop() || '—';
+  const { emoji, cls } = agentIcon(agent.id);
+  return `
     <div class="agent-row" data-id="${agent.id}">
-      <div class="agent-icon ${agent.iconClass}">${agent.emoji}</div>
+      <div class="agent-icon ${cls}">${emoji}</div>
       <div class="agent-row-info">
         <div class="agent-row-name">${escapeHTML(agent.name)}</div>
         <div class="agent-row-model">${escapeHTML(modelShort)}</div>
@@ -136,21 +187,11 @@ function agentRowHTML(agent) {
       </div>
       <div class="agent-row-meta">
         <div class="agent-row-stat">
-          <span class="agent-row-stat-val">${agent.calls}</span>
-          <span class="agent-row-stat-label">chamadas</span>
-        </div>
-        <div class="agent-row-stat">
-          <span class="agent-row-stat-val">${timeAgo(new Date(agent.createdAt))}</span>
+          <span class="agent-row-stat-val">${timeAgo(new Date(agent.created_at))}</span>
           <span class="agent-row-stat-label">criado</span>
         </div>
       </div>
       <div class="agent-card-actions">
-        <button class="icon-btn" data-action="edit" data-id="${agent.id}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
-        </button>
         <button class="icon-btn" data-action="delete" data-id="${agent.id}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/>
@@ -163,8 +204,9 @@ function agentRowHTML(agent) {
     </div>
   `;
 }
+
 function emptyStateHTML() {
-    return `
+  return `
     <div class="empty-state">
       <div class="empty-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -179,139 +221,106 @@ function emptyStateHTML() {
     </div>
   `;
 }
+
 // ─── Bindings ─────────────────────────────────────────────────────────────────
-function bindNav() {
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.addEventListener('click', () => {
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            item.classList.add('active');
-        });
-    });
-}
-function bindTopbar() {
-    document.getElementById('newAgentBtn')?.addEventListener('click', openModal);
-}
 function bindFilters() {
-    document.querySelectorAll('.filter-chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-            document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-            chip.classList.add('active');
-            state.filter = chip.getAttribute('data-filter');
-            renderAgents();
-        });
+  document.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      state.filter = chip.getAttribute('data-filter');
+      renderAgents();
     });
+  });
 }
+
 function bindViewToggle() {
-    document.getElementById('gridView')?.addEventListener('click', () => {
-        state.view = 'grid';
-        document.getElementById('gridView')?.classList.add('active');
-        document.getElementById('listView')?.classList.remove('active');
-        renderAgents();
-    });
-    document.getElementById('listView')?.addEventListener('click', () => {
-        state.view = 'list';
-        document.getElementById('listView')?.classList.add('active');
-        document.getElementById('gridView')?.classList.remove('active');
-        renderAgents();
-    });
+  document.getElementById('gridView')?.addEventListener('click', () => {
+    state.view = 'grid';
+    localStorage.setItem('orbit_agents_view', 'grid');
+    document.getElementById('gridView')?.classList.add('active');
+    document.getElementById('listView')?.classList.remove('active');
+    renderAgents();
+  });
+  document.getElementById('listView')?.addEventListener('click', () => {
+    state.view = 'list';
+    localStorage.setItem('orbit_agents_view', 'list');
+    document.getElementById('listView')?.classList.add('active');
+    document.getElementById('gridView')?.classList.remove('active');
+    renderAgents();
+  });
 }
-function bindModal() {
-    document.getElementById('closeModal')?.addEventListener('click', closeModal);
-    document.getElementById('cancelBtn')?.addEventListener('click', closeModal);
-    document.getElementById('createAgentBtn')?.addEventListener('click', createAgent);
-    document.getElementById('newAgentModal')?.addEventListener('click', (e) => {
-        if (e.target.id === 'newAgentModal')
-            closeModal();
-    });
-}
+
 function bindAgentActions() {
-    document.querySelectorAll('[data-action="delete"]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const id = btn.dataset.id;
-            state.agents = state.agents.filter(a => a.id !== id);
-            saveAgentsToStorage();
-            render();
-        });
+  document.querySelectorAll('[data-action="delete"]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const dismiss = toastLoading('Removendo agente...');
+      try {
+        await softDeleteAgent(id);
+        removeStatus(id);
+        state.agents = state.agents.filter(a => a.id !== id);
+        dismiss();
+        toast('Agente removido', 'success');
+        render();
+      } catch (err) {
+        dismiss();
+        toast('Erro ao remover agente', 'error');
+      }
     });
-    document.querySelectorAll('[data-action="edit"]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            // Edit flow — to be expanded
-        });
-    });
+  });
 }
-// ─── Modal ────────────────────────────────────────────────────────────────────
-function openModal() {
-    document.getElementById('newAgentModal')?.classList.add('open');
-}
-function closeModal() {
-    document.getElementById('newAgentModal')?.classList.remove('open');
-    resetForm();
-}
-function resetForm() {
-    document.getElementById('agentName').value = '';
-    document.getElementById('agentPrompt').value = '';
-    document.getElementById('agentModel').selectedIndex = 0;
-    document.getElementById('agentStatus').selectedIndex = 0;
-}
-function createAgent() {
-    const name = document.getElementById('agentName').value.trim();
-    const model = document.getElementById('agentModel').value;
-    const prompt = document.getElementById('agentPrompt').value.trim();
-    const status = document.getElementById('agentStatus').value;
-    if (!name)
-        return;
-    const icons = [
-        { emoji: '🤖', cls: 'agent-icon-indigo' },
-        { emoji: '⚡', cls: 'agent-icon-violet' },
-        { emoji: '🔮', cls: 'agent-icon-cyan' },
-        { emoji: '🧠', cls: 'agent-icon-rose' },
-        { emoji: '🛠️', cls: 'agent-icon-amber' },
-        { emoji: '✨', cls: 'agent-icon-emerald' },
-    ];
-    const icon = icons[state.agents.length % icons.length];
-    const agent = {
-        id: crypto.randomUUID(),
-        name,
-        model,
-        status,
-        prompt,
-        emoji: icon.emoji,
-        iconClass: icon.cls,
-        calls: 0,
-        createdAt: new Date(),
-    };
-    state.agents.unshift(agent);
-    saveAgentsToStorage();
-    closeModal();
-    render();
-}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function setText(id, value) {
-    const el = document.getElementById(id);
-    if (el)
-        el.textContent = value;
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
 }
+
 function escapeHTML(str) {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
+
 function timeAgo(date) {
-    const diff = Date.now() - date.getTime();
-    const mins = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-    if (mins < 1)
-        return 'agora';
-    if (mins < 60)
-        return `${mins}m`;
-    if (hours < 24)
-        return `${hours}h`;
-    return `${days}d`;
+  const diff = Date.now() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (mins < 1) return 'agora';
+  if (mins < 60) return `${mins}m`;
+  if (hours < 24) return `${hours}h`;
+  return `${days}d`;
 }
-export {};
-//# sourceMappingURL=dashboard.js.map
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info', duration = 3500) {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.style.cssText = 'position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:9999';
+    document.body.appendChild(container);
+  }
+  const t = document.createElement('div');
+  const colors = { success: '#22c55e', error: '#ef4444', info: '#6366f1', loading: '#a78bfa' };
+  t.style.cssText = `background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;padding:10px 16px;border-radius:8px;font-size:13px;display:flex;align-items:center;gap:8px;min-width:220px;box-shadow:0 4px 24px rgba(0,0,0,0.4);border-left:3px solid ${colors[type] ?? colors.info}`;
+  t.textContent = msg;
+  container.appendChild(t);
+  let dismissed = false;
+  const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
+    t.style.opacity = '0';
+    t.style.transition = 'opacity 0.2s';
+    setTimeout(() => t.remove(), 200);
+  };
+  if (duration > 0) setTimeout(dismiss, duration);
+  return dismiss;
+}
+
+function toastLoading(msg) { return toast(msg, 'loading', 0); }

@@ -34,23 +34,49 @@ let world;
 let label;
 // ─── Agent graph ───────────────────────────────────────────────────────────────
 const registry = new Map(); // agentId → { id, el, x, y, parentId, childIds }
-let nextAgentId = 1;
+let nextAgentId = 1; // kept for registerAgent (legacy, used only if called directly)
 let connSvg;
 // ─── Init ─────────────────────────────────────────────────────────────────────
+// DOMContentLoaded: UI bindings only (no DB access needed)
 document.addEventListener('DOMContentLoaded', () => {
-    viewport = document.getElementById('canvasViewport');
-    world = document.getElementById('canvasWorld');
-    label = document.getElementById('zoomLabel');
-    node.el = document.getElementById('agentNode');
-    loadSprite();
-    initGraph();
-    centerOnNode();
-    bindCanvas();
-    bindNode();
-    bindButtons();
-    bindPanel();
-    bindCreateModal();
-    requestAnimationFrame(loop);
+    try {
+        viewport = document.getElementById('canvasViewport');
+        world = document.getElementById('canvasWorld');
+        label = document.getElementById('zoomLabel');
+        console.log('[agents] DOMContentLoaded — viewport:', !!viewport, 'world:', !!world);
+        initGraph();
+        bindCanvas();
+        bindButtons();
+        bindPanel();
+        bindCreateModal();
+        requestAnimationFrame(loop);
+        console.log('[agents] DOMContentLoaded OK');
+    } catch (err) {
+        console.error('[agents] erro no DOMContentLoaded:', err);
+    }
+});
+
+// orbitSessionReady: load data from DB (boards first for z-order, then agents)
+document.addEventListener('orbitSessionReady', async () => {
+    console.log('[agents] orbitSessionReady — workspaceId:', OrbitSession.workspaceId);
+    try {
+        if (window.OrbitBoards) {
+            await window.OrbitBoards.loadAndRender(OrbitSession.workspaceId);
+            console.log('[agents] boards loaded');
+        } else {
+            console.warn('[agents] OrbitBoards não disponível — boards ignorados');
+        }
+        await loadCanvasData();
+        console.log('[agents] canvas data loaded');
+        restoreViewport();
+    } catch (err) {
+        console.error('[agents] erro na inicialização do canvas:', err);
+    }
+    // Auto-open create modal when navigated with ?create=true (from Home or any link)
+    if (new URLSearchParams(window.location.search).get('create') === 'true') {
+        history.replaceState(null, '', window.location.pathname); // clean URL, no re-open on refresh
+        openCreateModal();
+    }
 });
 // ─── Color filters ────────────────────────────────────────────────────────────
 const COLOR_FILTERS = {
@@ -82,8 +108,7 @@ function spriteUrl(id, source) {
 
 function loadSprite() {
     const img = document.getElementById('pokemonSprite');
-    if (!img)
-        return;
+    if (!img) return; // no static sprite element — all agents loaded from DB
     let id = 1;
     if (currentApiSource === 'pokemon') {
         id = Math.floor(Math.random() * 151) + 1;
@@ -152,7 +177,7 @@ function bindCanvas() {
     viewport.addEventListener('mousedown', (e) => {
         if (e.button !== 0 || node.dragging)
             return;
-        const onNode = node.el.contains(e.target);
+        const onNode = node.el ? node.el.contains(e.target) : false;
         // Click on empty canvas → exit edit mode
         if (editMode && !onNode) {
             exitEditMode();
@@ -181,6 +206,7 @@ function bindCanvas() {
             return;
         pan.active = false;
         viewport.classList.remove('dragging');
+        saveViewport();
     });
     viewport.addEventListener('wheel', (e) => {
         e.preventDefault();
@@ -193,6 +219,7 @@ function bindCanvas() {
         tgt.scale = clamp(tgt.scale * f, MIN_SCALE, MAX_SCALE);
         tgt.x = mx - wx * tgt.scale;
         tgt.y = my - wy * tgt.scale;
+        saveViewport();
     }, { passive: false });
 }
 // ─── Edit mode ────────────────────────────────────────────────────────────────
@@ -219,6 +246,7 @@ function startNodeDrag(e) {
 }
 // ─── Node interaction ─────────────────────────────────────────────────────────
 function bindNode() {
+    if (!node.el) return; // no static node when agents are loaded from DB
     const el = node.el;
     el.addEventListener('mousedown', (e) => {
         if (e.button !== 0)
@@ -295,13 +323,7 @@ function initGraph() {
     connSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     connSvg.style.cssText = 'position:absolute;top:0;left:0;width:4000px;height:4000px;pointer-events:none;overflow:visible;z-index:0';
     world.prepend(connSvg);
-
-    // Register original agent
-    const el = document.getElementById('agentNode');
-    const id = `a${nextAgentId++}`;
-    el.dataset.agentId = id;
-    registry.set(id, { id, el, x: NODE_HX, y: NODE_HY, parentId: null, childIds: [] });
-    addSubagentAction(el);
+    // No static node — agents are loaded from DB in orbitSessionReady
 }
 
 // ─── Graph: registry helpers ───────────────────────────────────────────────────
@@ -429,66 +451,22 @@ function subagentPos(parentId) {
     return { x: parent.x + xOff, y: parent.y + 230 };
 }
 
-function spawnSubagent(parentId) {
+async function spawnSubagent(parentId) {
     const pos = subagentPos(parentId);
-    const pokeId = currentApiSource === 'pokemon' ? Math.floor(Math.random() * 151) + 1 : 1;
-    const url    = spriteUrl(pokeId);
 
-    const el = document.createElement('div');
-    el.className = 'agent-node';
-    el.style.left = `${pos.x}px`;
-    el.style.top  = `${pos.y}px`;
-    el.dataset.pokemonId  = String(pokeId);
-    el.dataset.apiSource  = currentApiSource;
-    el.dataset.agentName  = 'subagente';
-    el.dataset.agentModel = 'openai/gpt-4o-mini';
-    el.innerHTML = `
-      <div class="agent-actions">
-        <button class="agent-action" data-action="name" title="Editar nome">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/>
-          </svg>
-        </button>
-        <button class="agent-action" data-action="prompt" title="Editar prompt">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            <line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="13" y2="14"/>
-          </svg>
-        </button>
-        <button class="agent-action" data-action="delete" title="Excluir agente">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-            <path d="M10 11v6M14 11v6"/>
-            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-          </svg>
-        </button>
-      </div>
-      <img class="agent-node-pokemon" src="${url}" alt="" draggable="false" style="opacity:0;transition:opacity 0.4s ease"/>
-      <div class="agent-node-shadow"></div>
-      <div class="agent-node-label">subagente</div>
-    `;
+    const { data, error } = await db.from('agents').insert({
+        workspace_id:    OrbitSession.workspaceId,
+        name:            'subagente',
+        model_id:        'openai/gpt-4o-mini',
+        parent_agent_id: parentId,
+        x:               Math.round(pos.x),
+        y:               Math.round(pos.y),
+    }).select('id, name, model_id, system_prompt, x, y, parent_agent_id').single();
 
-    world.appendChild(el);
+    if (error) { console.error('spawnSubagent insert error:', error); return; }
 
-    // Sprite load
-    const img = el.querySelector('.agent-node-pokemon');
-    img.onload  = () => { img.style.opacity = '1'; };
-    img.onerror = () => {
-        if (el.dataset.apiSource === 'pokemon') {
-            img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokeId}.png`;
-            img.onload = () => { img.style.opacity = '1'; };
-        } else {
-            img.style.opacity = '1';
-        }
-    };
-
-    // Register and connect
-    const agentId = registerAgent(el, pos.x, pos.y, parentId);
-    drawConn(parentId, agentId);
-    addSubagentAction(el);
-    bindExtraNode(el, pos.x, pos.y, agentId);
+    spawnAgentFromDB(data);
+    drawConn(parentId, data.id);
 
     // Pan toward new subagent
     const rect = viewport.getBoundingClientRect();
@@ -497,6 +475,15 @@ function spawnSubagent(parentId) {
 }
 
 // ─── Create agent modal ───────────────────────────────────────────────────────
+// openCreateModal is also called from orbitSessionReady (?create=true param)
+function openCreateModal() {
+    const overlay   = document.getElementById('createOverlay');
+    const nameInput = document.getElementById('createName');
+    if (!overlay || !nameInput) return;
+    overlay.classList.add('open');
+    requestAnimationFrame(() => nameInput.focus());
+}
+
 function bindCreateModal() {
     const overlay   = document.getElementById('createOverlay');
     const nameInput = document.getElementById('createName');
@@ -505,17 +492,12 @@ function bindCreateModal() {
     const confirmBtn= document.getElementById('createConfirm');
     const newBtn    = document.getElementById('newAgentBtn');
 
-    function openCreate() {
-        overlay.classList.add('open');
-        requestAnimationFrame(() => nameInput.focus());
-    }
-
     function closeCreate() {
         overlay.classList.remove('open');
         nameInput.value = '';
     }
 
-    newBtn.addEventListener('click', openCreate);
+    newBtn.addEventListener('click', openCreateModal);
     closeBtn.addEventListener('click', closeCreate);
     cancelBtn.addEventListener('click', closeCreate);
     overlay.addEventListener('click', e => { if (e.target === overlay) closeCreate(); });
@@ -525,84 +507,55 @@ function bindCreateModal() {
         if (e.key === 'Escape') closeCreate();
     });
 
-    confirmBtn.addEventListener('click', () => {
+    confirmBtn.addEventListener('click', async () => {
         const name  = nameInput.value.trim() || 'agente';
         const model = document.getElementById('createModel').value;
-        spawnAgent(name, model);
-        closeCreate();
+
+        if (!OrbitSession?.workspaceId) {
+            console.error('[agents] OrbitSession não está pronta — workspace_id ausente');
+            return;
+        }
+
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Criando...';
+        try {
+            await spawnAgent(name, model);
+            closeCreate();
+        } catch (err) {
+            console.error('[agents] Erro ao criar agente:', err);
+        } finally {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Criar agente';
+        }
     });
 }
 
-function spawnAgent(name, model) {
-    const world = document.getElementById('canvasWorld');
-
+async function spawnAgent(name, model) {
     const existingNodes = world.querySelectorAll('.agent-node');
-    const offsetX = 160 * existingNodes.length;
-    const hx = NODE_HX + offsetX;
+    const hx = NODE_HX + 160 * existingNodes.length;
     const hy = NODE_HY;
 
-    const id  = currentApiSource === 'pokemon' ? Math.floor(Math.random() * 151) + 1 : 1;
-    const url = spriteUrl(id);
+    console.log('[agents] INSERT agent:', { workspace_id: OrbitSession.workspaceId, name, model_id: model, x: hx, y: hy });
 
-    const el = document.createElement('div');
-    el.className = 'agent-node';
-    el.style.left = `${hx}px`;
-    el.style.top  = `${hy}px`;
-    el.dataset.pokemonId  = String(id);
-    el.dataset.apiSource  = currentApiSource;
-    el.dataset.agentName  = name;
-    el.dataset.agentModel = model;
-    el.innerHTML = `
-      <div class="agent-actions">
-        <button class="agent-action" data-action="name" title="Editar nome">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/>
-          </svg>
-        </button>
-        <button class="agent-action" data-action="prompt" title="Editar prompt">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            <line x1="9" y1="10" x2="15" y2="10"/>
-            <line x1="9" y1="14" x2="13" y2="14"/>
-          </svg>
-        </button>
-        <button class="agent-action" data-action="delete" title="Excluir agente">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-            <path d="M10 11v6M14 11v6"/>
-            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-          </svg>
-        </button>
-      </div>
-      <img class="agent-node-pokemon" src="${url}" alt="" draggable="false" style="opacity:0;transition:opacity 0.4s ease"/>
-      <div class="agent-node-shadow"></div>
-      <div class="agent-node-label">${name}</div>
-    `;
+    const { data, error } = await db.from('agents').insert({
+        workspace_id: OrbitSession.workspaceId,
+        name,
+        model_id: model || null,
+        x: Math.round(hx),
+        y: Math.round(hy),
+    }).select('id, name, model_id, system_prompt, x, y, parent_agent_id').single();
 
-    world.appendChild(el);
+    if (error) {
+        console.error('[agents] INSERT error:', error);
+        throw new Error(error.message);
+    }
 
-    const img = el.querySelector('.agent-node-pokemon');
-    img.onload  = () => { img.style.opacity = '1'; };
-    img.onerror = () => {
-        if (el.dataset.apiSource === 'pokemon') {
-            img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
-            img.onload = () => { img.style.opacity = '1'; };
-        } else {
-            img.style.opacity = '1';
-        }
-    };
-
-    const agentId = registerAgent(el, hx, hy, null);
-    addSubagentAction(el);
-    bindExtraNode(el, hx, hy, agentId);
+    console.log('[agents] INSERT ok:', data);
+    spawnAgentFromDB(data);
 
     const rect = viewport.getBoundingClientRect();
-    const nodeCX = hx + NODE_W / 2;
-    const nodeCY = hy + NODE_W / 2;
-    tgt.x = rect.width  / 2 - (nodeCX - 2000);
-    tgt.y = rect.height * 0.28 - (nodeCY - 2000);
+    tgt.x = rect.width  / 2 - (hx + NODE_W / 2 - 2000);
+    tgt.y = rect.height * 0.28 - (hy + NODE_W / 2 - 2000);
 }
 
 function bindExtraNode(el, initX, initY, agentId) {
@@ -653,6 +606,9 @@ function bindExtraNode(el, initX, initY, agentId) {
             openPanelForNode(el, 'settings');
         }
         el._quickClick = false;
+        if (state.dragging && agentId) {
+            savePosition(agentId, state.x, state.y);
+        }
         state.dragging = false;
         el.classList.remove('dragging');
     });
@@ -727,9 +683,17 @@ function openPanelForNode(el, action) {
         if (labelEl) labelEl.textContent = nameInput.value || 'agente';
         el.dataset.agentName = nameInput.value;
     };
+    nameInput.onblur = () => {
+        const name = nameInput.value.trim() || 'agente';
+        el.dataset.agentName = name;
+        if (el.dataset.agentId) saveAgentFields(el.dataset.agentId, { name });
+    };
 
-    // Wire model changes back to dataset
-    modelSel.onchange = () => { el.dataset.agentModel = modelSel.value; };
+    // Wire model changes back to dataset + DB
+    modelSel.onchange = () => {
+        el.dataset.agentModel = modelSel.value;
+        if (el.dataset.agentId) saveAgentFields(el.dataset.agentId, { model_id: modelSel.value });
+    };
 
     // Wire API source selector
     if (apiSel) {
@@ -777,6 +741,16 @@ function openPanelForNode(el, action) {
         });
     }
 
+    // Sync system_prompt textarea
+    const promptTextarea = document.getElementById('fieldPrompt');
+    if (promptTextarea) {
+        promptTextarea.value = el.dataset.systemPrompt || '';
+        promptTextarea.onblur = () => {
+            el.dataset.systemPrompt = promptTextarea.value;
+            if (el.dataset.agentId) saveAgentFields(el.dataset.agentId, { system_prompt: promptTextarea.value || null });
+        };
+    }
+
     panel.classList.add('open');
 
     if (action === 'name')   setTimeout(() => nameInput.focus(), 320);
@@ -821,10 +795,18 @@ function updateSpriteIdLabel(labelEl, source) {
     }
 }
 
-function deleteAgent(el) {
+async function deleteAgent(el) {
     if (!el) return;
     const agentId = el.dataset.agentId;
     const panel   = document.getElementById('agentPanel');
+
+    // Soft-delete in DB (agentId is a UUID from DB)
+    if (agentId) {
+        await db.from('agents')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('id', agentId)
+            .eq('workspace_id', OrbitSession.workspaceId);
+    }
 
     panel.classList.remove('open');
 
@@ -873,6 +855,18 @@ function bindPanel() {
     document.getElementById('deleteAgentBtn')?.addEventListener('click', () => {
         deleteAgent(panelTargetEl);
     });
+
+    // Save button: flush any pending debounced saves immediately
+    document.getElementById('saveAgentBtn')?.addEventListener('click', () => {
+        if (!panelTargetEl || !panelTargetEl.dataset.agentId) return;
+        const id = panelTargetEl.dataset.agentId;
+        const name        = document.getElementById('fieldName')?.value.trim() || 'agente';
+        const model_id    = document.getElementById('fieldModel')?.value;
+        const system_prompt = document.getElementById('fieldPrompt')?.value || null;
+        // Immediate save (bypasses debounce)
+        db.from('agents').update({ name, model_id, system_prompt })
+          .eq('id', id).eq('workspace_id', OrbitSession.workspaceId).then(() => {});
+    });
     // Name sync → panel header
     const nameInput = document.getElementById('fieldName');
     const panelName = document.getElementById('panelAgentName');
@@ -891,11 +885,156 @@ function bindPanel() {
     });
 }
 function openPanel() {
+    if (!node.el) return;
     openPanelForNode(node.el, 'settings');
 }
 // ─── Utils ────────────────────────────────────────────────────────────────────
 function clamp(v, min, max) {
     return Math.min(max, Math.max(min, v));
 }
-export {};
-//# sourceMappingURL=agents.js.map
+
+function escapeHTML(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── DB: load canvas data ─────────────────────────────────────────────────────
+async function loadCanvasData() {
+    const { data, error } = await db
+        .from('agents')
+        .select('id, name, model_id, system_prompt, x, y, parent_agent_id')
+        .eq('workspace_id', OrbitSession.workspaceId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true }); // parents before children
+
+    if (error) { console.error('loadAgents error:', error); return; }
+
+    const agents = data ?? [];
+    // First pass: spawn all DOM nodes, register in registry
+    agents.forEach(a => spawnAgentFromDB(a));
+    // Second pass: draw connections for parent-child pairs
+    agents.forEach(a => {
+        if (a.parent_agent_id && registry.has(a.parent_agent_id) && registry.has(a.id)) {
+            drawConn(a.parent_agent_id, a.id);
+        }
+    });
+}
+
+// ─── DB: spawn agent from DB record ──────────────────────────────────────────
+// Visual: always uses robot-idle.gif (default source = 'gif')
+// The gif asset loads instantly from cache after first agent — no flash needed.
+function spawnAgentFromDB(agent) {
+    const gifUrl = 'assets/images/robot-idle.gif';
+
+    const el = document.createElement('div');
+    el.className = 'agent-node';
+    el.style.left = `${agent.x}px`;
+    el.style.top  = `${agent.y}px`;
+    el.dataset.agentId      = agent.id;
+    el.dataset.agentName    = agent.name || 'agente';
+    el.dataset.agentModel   = agent.model_id || 'openai/gpt-4o';
+    el.dataset.systemPrompt = agent.system_prompt || '';
+    el.dataset.pokemonId    = '1';
+    el.dataset.apiSource    = 'gif';
+    el.innerHTML = `
+      <div class="agent-actions">
+        <button class="agent-action" data-action="name" title="Editar nome">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/>
+          </svg>
+        </button>
+        <button class="agent-action" data-action="prompt" title="Editar prompt">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            <line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="13" y2="14"/>
+          </svg>
+        </button>
+        <button class="agent-action" data-action="delete" title="Excluir agente">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            <path d="M10 11v6M14 11v6"/>
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+          </svg>
+        </button>
+      </div>
+      <img class="agent-node-pokemon" src="${gifUrl}" alt="" draggable="false"
+           style="opacity:0;transition:opacity 0.3s ease"/>
+      <div class="agent-node-shadow"></div>
+      <div class="agent-node-label">${escapeHTML(agent.name || 'agente')}</div>
+    `;
+
+    // Reveal gif once loaded (instant from cache after first agent)
+    const img = el.querySelector('.agent-node-pokemon');
+    img.onload = () => { img.style.opacity = '1'; };
+    img.onerror = () => { img.style.opacity = '1'; }; // show even if asset missing
+
+    world.appendChild(el);
+
+    const parentId = agent.parent_agent_id ?? null;
+    registry.set(agent.id, { id: agent.id, el, x: agent.x, y: agent.y, parentId, childIds: [] });
+    if (parentId && registry.has(parentId)) {
+        registry.get(parentId).childIds.push(agent.id);
+    }
+
+    addSubagentAction(el);
+    bindExtraNode(el, agent.x, agent.y, agent.id);
+
+    return el;
+}
+
+// ─── DB: position save (debounced per agent) ──────────────────────────────────
+const _savePosTimers = new Map();
+function savePosition(agentId, x, y) {
+    clearTimeout(_savePosTimers.get(agentId));
+    _savePosTimers.set(agentId, setTimeout(async () => {
+        await db.from('agents')
+            .update({ x: Math.round(x), y: Math.round(y) })
+            .eq('id', agentId)
+            .eq('workspace_id', OrbitSession.workspaceId);
+    }, 600));
+}
+
+// ─── DB: agent fields save (debounced per agent) ──────────────────────────────
+const _saveFieldTimers = new Map();
+function saveAgentFields(agentId, fields) {
+    clearTimeout(_saveFieldTimers.get(agentId));
+    _saveFieldTimers.set(agentId, setTimeout(async () => {
+        await db.from('agents')
+            .update(fields)
+            .eq('id', agentId)
+            .eq('workspace_id', OrbitSession.workspaceId);
+    }, 800));
+}
+
+// ─── Viewport: persist zoom/pan in localStorage ───────────────────────────────
+const saveViewport = (function () {
+    let t;
+    return function () {
+        clearTimeout(t);
+        t = setTimeout(() => {
+            localStorage.setItem('orbit_canvas_view', JSON.stringify({
+                tx: tgt.x, ty: tgt.y, scale: tgt.scale,
+            }));
+        }, 500);
+    };
+})();
+
+function restoreViewport() {
+    try {
+        const saved = JSON.parse(localStorage.getItem('orbit_canvas_view') ?? 'null');
+        if (saved && typeof saved.tx === 'number') {
+            tgt.x = cur.x = saved.tx;
+            tgt.y = cur.y = saved.ty;
+            tgt.scale = cur.scale = clamp(saved.scale, MIN_SCALE, MAX_SCALE);
+            return;
+        }
+    } catch { /* ignore */ }
+    // No saved viewport — center on first loaded agent
+    const first = registry.values().next().value;
+    if (first) {
+        const rect = viewport.getBoundingClientRect();
+        tgt.x = cur.x = rect.width  / 2 - (first.x + NODE_W / 2 - 2000);
+        tgt.y = cur.y = rect.height * 0.28 - (first.y + NODE_W / 2 - 2000);
+    }
+}

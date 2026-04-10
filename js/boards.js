@@ -30,6 +30,11 @@
     return { x: (sx - tx) / scale + 2000, y: (sy - ty) / scale + 2000 };
   }
 
+  function debounce(fn, ms) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  }
+
   // ─── Popover position ─────────────────────────────────────────────────────────
   function syncPopover() {
     if (!activeBoard || !popover.classList.contains('open')) return;
@@ -54,7 +59,6 @@
     activeBoard = el;
     el.classList.add('selected');
 
-    // Sync swatches
     const color = el.dataset.color || PRESETS[0];
     popover.querySelectorAll('.board-color-swatch')
       .forEach(s => s.classList.toggle('active', s.dataset.color === color));
@@ -70,27 +74,74 @@
     popover.classList.remove('open');
   }
 
+  // ─── DB saves (debounced) ─────────────────────────────────────────────────────
+  const saveGeometry = debounce(async (el) => {
+    if (!el.dataset.boardId) return;
+    await db.from('boards').update({
+      x:      Math.round(parseFloat(el.style.left)),
+      y:      Math.round(parseFloat(el.style.top)),
+      width:  Math.round(parseFloat(el.style.width)),
+      height: Math.round(parseFloat(el.style.height)),
+    }).eq('id', el.dataset.boardId);
+  }, 800);
+
+  const saveColor = debounce(async (el, color) => {
+    if (!el.dataset.boardId) return;
+    await db.from('boards').update({ color }).eq('id', el.dataset.boardId);
+  }, 800);
+
   // ─── Create board ─────────────────────────────────────────────────────────────
-  function createBoard(wx, wy, color) {
+  // opts.dbId   → board already exists in DB (loading phase), skip INSERT
+  // opts.name   → board name
+  // opts.width  → board width
+  // opts.height → board height
+  async function createBoard(wx, wy, color, opts = {}) {
+    let boardId = opts.dbId ?? null;
+    const w     = opts.width  ?? DEFAULT_W;
+    const h     = opts.height ?? DEFAULT_H;
+    const name  = opts.name   ?? 'Quadro';
+
+    if (!boardId) {
+      const { data, error } = await db.from('boards').insert({
+        workspace_id: OrbitSession.workspaceId,
+        name,
+        color,
+        x:      Math.round(wx),
+        y:      Math.round(wy),
+        width:  Math.round(w),
+        height: Math.round(h),
+      }).select('id').single();
+      if (error) { console.error('Board create failed:', error); return null; }
+      boardId = data.id;
+    }
+
     const el = document.createElement('div');
     el.className = 'canvas-board';
+    el.dataset.boardId = boardId;
     el.style.left   = `${wx}px`;
     el.style.top    = `${wy}px`;
-    el.style.width  = `${DEFAULT_W}px`;
-    el.style.height = `${DEFAULT_H}px`;
+    el.style.width  = `${w}px`;
+    el.style.height = `${h}px`;
     applyColor(el, color);
 
     // Title
     const title = document.createElement('input');
     title.className = 'canvas-board-title';
     title.type = 'text';
-    title.value = 'Quadro';
+    title.value = name;
     title.spellcheck = false;
     title.addEventListener('mousedown',   e => e.stopPropagation());
     title.addEventListener('pointerdown', e => e.stopPropagation());
     title.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === 'Escape') title.blur();
       e.stopPropagation();
+    });
+    title.addEventListener('blur', () => {
+      if (!el.dataset.boardId) return;
+      db.from('boards')
+        .update({ name: title.value.trim() || 'Quadro' })
+        .eq('id', el.dataset.boardId)
+        .then(() => {});
     });
 
     // Delete button
@@ -102,14 +153,21 @@
     </svg>`;
     del.addEventListener('mousedown',   e => { e.stopPropagation(); e.preventDefault(); });
     del.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); });
-    del.addEventListener('click', e => { e.stopPropagation(); el.remove(); deselect(); });
+    del.addEventListener('click', async e => {
+      e.stopPropagation();
+      if (el.dataset.boardId) {
+        await db.from('boards').delete().eq('id', el.dataset.boardId);
+      }
+      el.remove();
+      deselect();
+    });
 
     // Resize handles
     ['n','s','e','w','ne','nw','se','sw'].forEach(dir => {
-      const h = document.createElement('div');
-      h.className = `board-resize board-resize-${dir}`;
-      h.dataset.dir = dir;
-      el.appendChild(h);
+      const handle = document.createElement('div');
+      handle.className = `board-resize board-resize-${dir}`;
+      handle.dataset.dir = dir;
+      el.appendChild(handle);
     });
 
     el.appendChild(title);
@@ -163,7 +221,7 @@
       if (drag.type === 'move') {
         el.style.left = `${drag.origX + dx}px`;
         el.style.top  = `${drag.origY + dy}px`;
-        syncPopover(); // follow the board
+        syncPopover();
         return;
       }
 
@@ -180,24 +238,29 @@
       syncPopover();
     });
 
-    el.addEventListener('pointerup',     () => { drag = null; });
+    el.addEventListener('pointerup', () => {
+      if (drag) saveGeometry(el);
+      drag = null;
+    });
     el.addEventListener('pointercancel', () => { drag = null; });
   }
 
-  // ─── Init ─────────────────────────────────────────────────────────────────────
+  // ─── Init (UI only, no DB) ────────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', () => {
     viewport = document.getElementById('canvasViewport');
     world    = document.getElementById('canvasWorld');
     popover  = document.getElementById('boardColorPopover');
 
-    // New board button — create immediately, no popover
-    document.getElementById('newBoardBtn').addEventListener('click', e => {
+    // Guard: boards.js só funciona na página do canvas
+    if (!viewport || !world || !popover) return;
+
+    // New board button
+    document.getElementById('newBoardBtn')?.addEventListener('click', async e => {
       e.stopPropagation();
       const color = PRESETS[Math.floor(Math.random() * PRESETS.length)];
       const rect  = viewport.getBoundingClientRect();
       const wPos  = screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
-      createBoard(wPos.x - DEFAULT_W / 2, wPos.y - DEFAULT_H / 2, color);
-      // No select() here — no popup on creation
+      await createBoard(wPos.x - DEFAULT_W / 2, wPos.y - DEFAULT_H / 2, color);
     });
 
     // Swatches
@@ -210,17 +273,19 @@
         sw.classList.add('active');
         applyColor(activeBoard, sw.dataset.color);
         document.getElementById('boardColorCustom').value = sw.dataset.color;
+        saveColor(activeBoard, sw.dataset.color);
       });
     });
 
     // Custom color picker
     const custom = document.getElementById('boardColorCustom');
-    custom.addEventListener('pointerdown', e => e.stopPropagation());
-    custom.addEventListener('input', e => {
+    custom?.addEventListener('pointerdown', e => e.stopPropagation());
+    custom?.addEventListener('input', e => {
       e.stopPropagation();
       if (!activeBoard) return;
       popover.querySelectorAll('.board-color-swatch').forEach(s => s.classList.remove('active'));
       applyColor(activeBoard, custom.value);
+      saveColor(activeBoard, custom.value);
     });
 
     // Deselect when clicking canvas (not board, not popover)
@@ -233,9 +298,30 @@
     // Position board button next to new-agent button
     const newAgentBtn = document.getElementById('newAgentBtn');
     const boardBtn    = document.getElementById('newBoardBtn');
-    requestAnimationFrame(() => {
-      boardBtn.style.left = `${newAgentBtn.offsetLeft + newAgentBtn.offsetWidth + 10}px`;
-    });
+    if (newAgentBtn && boardBtn) {
+      requestAnimationFrame(() => {
+        boardBtn.style.left = `${newAgentBtn.offsetLeft + newAgentBtn.offsetWidth + 10}px`;
+      });
+    }
   });
+
+  // ─── Public API ───────────────────────────────────────────────────────────────
+  // Called by agents.js after orbitSessionReady, BEFORE agents are rendered
+  // (ensures boards sit below agents in the DOM = correct z-order)
+  window.OrbitBoards = {
+    async loadAndRender(workspaceId) {
+      const { data, error } = await db
+        .from('boards')
+        .select('id, name, color, x, y, width, height')
+        .eq('workspace_id', workspaceId)
+        .order('created_at', { ascending: true });
+      if (error) { console.error('loadBoards error:', error); return; }
+      for (const b of (data ?? [])) {
+        await createBoard(b.x, b.y, b.color, {
+          dbId: b.id, name: b.name, width: b.width, height: b.height,
+        });
+      }
+    },
+  };
 
 })();

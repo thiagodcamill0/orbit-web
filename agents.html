@@ -117,46 +117,7 @@
     <div class="canvas-viewport" id="canvasViewport">
 
       <div class="canvas-world" id="canvasWorld">
-
-        <!-- Agent node -->
-        <div class="agent-node" id="agentNode" style="left: 1956px; top: 1920px;">
-
-          <!-- Quick actions (edit mode) -->
-          <div class="agent-actions">
-            <button class="agent-action" data-action="name" title="Editar nome">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/>
-              </svg>
-            </button>
-            <button class="agent-action" data-action="prompt" title="Editar prompt">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                <line x1="9" y1="10" x2="15" y2="10"/>
-                <line x1="9" y1="14" x2="13" y2="14"/>
-              </svg>
-            </button>
-            <button class="agent-action" data-action="delete" title="Excluir agente">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                <path d="M10 11v6M14 11v6"/>
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-              </svg>
-            </button>
-            <button class="agent-action" data-action="subagent" title="Criar subagente">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="4" r="2"/><circle cx="4" cy="20" r="2"/><circle cx="20" cy="20" r="2"/>
-                <path d="M12 6v5M12 11l-6 7M12 11l6 7"/>
-              </svg>
-            </button>
-          </div>
-
-          <img class="agent-node-pokemon" id="pokemonSprite" src="" alt="" draggable="false" />
-          <div class="agent-node-shadow"></div>
-          <div class="agent-node-label" id="agentNodeLabel">agente</div>
-        </div>
-
+        <!-- Agent nodes are injected from DB via agents.js -->
       </div>
 
       <!-- New board button -->
@@ -362,8 +323,12 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/auth-guard.js"></script>
 <script src="js/boards.js"></script>
-<script type="module" src="js/agents.js"></script>
+<script src="js/agents.js"></script>
 <script src="js/sidebar.js"></script>
 </body>
 </html>

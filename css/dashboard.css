@@ -414,6 +414,7 @@
   background: var(--accent);
   color: #fff;
   box-shadow: 0 0 16px var(--accent-glow);
+  text-decoration: none;
 }
 
 .topbar-btn-accent:hover {
@@ -434,6 +435,10 @@
 /* ─── Page Header ────────────────────────────── */
 .page-header {
   margin-bottom: 28px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .page-title {
@@ -708,6 +713,21 @@
 .icon-btn svg { width: 13px; height: 13px; }
 
 /* ─── Empty State ────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: rgba(99,102,241,0.2);
+  color: #818cf8;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
