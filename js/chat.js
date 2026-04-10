@@ -1,7 +1,7 @@
 // ─── chat.js ─────────────────────────────────────────────────────────────────
 // Etapa 5 — Conversations + Messages conectados ao Supabase.
-// Mock assistant response isolada em mockAssistantResponse() para swap futuro
-// por Edge Function real.
+// Resposta do assistant via Edge Function chat-completion.
+// Frontend insere apenas role='user'; role='assistant' é inserido pelo backend.
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function () {
@@ -186,38 +186,61 @@
       return;
     }
 
-    // Assistant response (mock — swap for Edge Function call)
-    await mockAssistantResponse(activeConvId, content);
+    // Assistant response via Edge Function
+    await callAssistantEdgeFunction(activeConvId, activeAgent.id);
 
     sending = false;
     sendBtn.disabled = false;
   }
 
-  // ─── Mock assistant response ─────────────────────────────────────────────────
-  // VISUAL ONLY — não persiste no banco.
-  // RLS permite INSERT de 'assistant' apenas via service role / Edge Function.
-  //
-  // Para integrar Edge Function:
-  //   1. Remover este mock
-  //   2. Chamar: await callAssistantEdgeFunction(convId, workspaceId, userMessage)
-  //   3. A Edge Function insere no banco com service role e retorna o conteúdo
-  //   4. Renderizar aqui com buildBubble('assistant', reply, new Date())
-  async function mockAssistantResponse(_convId, userMessage) {
+  // ─── Edge Function call ──────────────────────────────────────────────────────
+  // POST para chat-completion passando JWT do usuário.
+  // A Edge Function lê a integração, chama o LLM, persiste role='assistant'
+  // e retorna { content } para render.
+  async function callAssistantEdgeFunction(convId, agentId) {
     const typing = buildTypingIndicator();
     messagesEl.appendChild(typing);
     scrollToBottom();
 
-    await sleep(900 + Math.random() * 600);
+    let reply = null;
+
+    try {
+      const { data: { session } } = await db.auth.getSession();
+      if (!session) throw new Error('No active session');
+
+      const fnUrl = ORBIT_CONFIG.functions.url + '/chat-completion';
+
+      const res = await fetch(fnUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': 'Bearer ' + session.access_token,
+        },
+        body: JSON.stringify({
+          conversation_id: convId,
+          agent_id:        agentId,
+          workspace_id:    workspaceId,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json.error || 'Edge Function error ' + res.status);
+      }
+
+      reply = json.content;
+    } catch (err) {
+      console.error('chat: callAssistantEdgeFunction error', err);
+      reply = '[Erro ao obter resposta do agente: ' + err.message + ']';
+    }
+
     typing.remove();
 
-    const preview = userMessage.length > 80
-      ? userMessage.slice(0, 80) + '...'
-      : userMessage;
-    const reply = 'Recebi: "' + preview + '". [Mock visual — resposta real via Edge Function em breve.]';
-
-    // Apenas render visual; persistência de mensagens assistant é responsabilidade do backend.
-    messagesEl.appendChild(buildBubble('assistant', reply, new Date()));
-    scrollToBottom();
+    if (reply) {
+      messagesEl.appendChild(buildBubble('assistant', reply, new Date()));
+      scrollToBottom();
+    }
   }
 
   // ─── DOM builders ────────────────────────────────────────────────────────────
@@ -264,8 +287,6 @@
       .replace(/"/g, '&quot;');
   }
 
-  function sleep(ms) {
-    return new Promise(r => setTimeout(r, ms));
-  }
+
 
 })();

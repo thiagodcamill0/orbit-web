@@ -14,6 +14,15 @@ const ORBIT_CONFIG = {
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnZmF6bHpiYmdsY2dnZXBhbWV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NzcxNjUsImV4cCI6MjA4ODE1MzE2NX0.8Yc8V883qd0B11HcECys-8_db-EkH74af8gCk5RO7to',
   },
 
+  // Base URL das Edge Functions.
+  // Produção  → aponta para o projeto Supabase automaticamente.
+  // Dev local → trocar APENAS esta linha para 'http://localhost:54321/functions/v1'
+  //             enquanto roda: supabase functions serve
+  //             Auth e DB continuam usando supabase.url acima, sem alteração.
+  functions: {
+    url: 'https://bgfazlzbbglcggepameu.supabase.co/functions/v1',
+  },
+
   // URL base da aplicação. Usada para redirects de auth (ex: email confirm).
   // Em localhost: deixar como ''. Em produção: 'https://seudominio.com'
   appUrl: '',
