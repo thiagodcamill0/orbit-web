@@ -198,6 +198,10 @@
   // A Edge Function lê a integração, chama o LLM, persiste role='assistant'
   // e retorna { content } para render.
   async function callAssistantEdgeFunction(convId, agentId) {
+    if (!convId || !agentId || !workspaceId) {
+      throw new Error('Missing required data to call chat-completion');
+    }
+
     const typing = buildTypingIndicator();
     messagesEl.appendChild(typing);
     scrollToBottom();
@@ -215,6 +219,7 @@
         headers: {
           'Content-Type':  'application/json',
           'Authorization': 'Bearer ' + session.access_token,
+          'apikey':        ORBIT_CONFIG.supabase.anonKey,
         },
         body: JSON.stringify({
           conversation_id: convId,

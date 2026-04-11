@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" type="image/gif" href="assets/images/robot-idle.gif" />
+  <link rel="icon" type="image/png" href="assets/images/browser.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>orbit — Integrações</title>
   <link rel="stylesheet" href="css/global.css" />
@@ -16,7 +16,7 @@
   <aside class="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-brand">
-        <span class="sidebar-brand-name">Orbit</span>
+        <img src="assets/images/logo.png" alt="Orbit" class="sidebar-brand-name" />
       </div>
     </div>
     <nav class="sidebar-nav">
@@ -228,9 +228,10 @@
         </svg>
       </button>
     </div>
-    <p class="modal-subtitle">Selecione o serviço que deseja integrar</p>
+    <p class="modal-subtitle" id="catalogSubtitle">Selecione o serviço que deseja integrar</p>
     <div class="catalog-grid" id="catalogGrid"></div>
     <div class="modal-footer">
+      <button class="btn-sm btn-sm-ghost" id="catalogBackBtn" style="display:none">← Voltar</button>
       <button class="btn-sm btn-sm-ghost" data-close="catalogModal">Cancelar</button>
       <button class="btn-sm btn-sm-accent" id="catalogNextBtn" disabled>Próximo</button>
     </div>

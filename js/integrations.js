@@ -1,24 +1,29 @@
 /**
  * integrations.js — Orbit
  *
- * Conecta integrations.html ao banco Supabase.
+ * Conecta integrations.html ao banco Supabase e à Edge Function `integrations`.
  *
- * Tabelas usadas:
- *   ai_providers    → catálogo global de providers (leitura)
- *   ai_integrations → integrações do workspace (CRUD + soft delete)
+ * Tabelas usadas (leitura direta):
+ *   ai_providers    → catálogo global de providers
+ *   ai_integrations → integrações do workspace (leitura + join)
  *
- * Sobre secret_ref:
- *   Armazena apenas um identificador (ex: "GROK_API_KEY"), nunca a
- *   chave real. A chave real fica em variável de ambiente no backend.
- *   A UI exibe um campo para o usuário registrar esse identificador.
+ * Edge Function (operações sensíveis):
+ *   POST   /integrations        → criar integração
+ *   PATCH  /integrations/:id    → editar nome e/ou API key
+ *   DELETE /integrations/:id    → soft delete + limpar encrypted_key
  *
- * Depende de: supabase-client.js (db), auth-guard.js (OrbitSession)
+ * Regras de segurança no frontend:
+ *   - `encrypted_key` nunca é armazenado no state; convertido em `has_key: boolean`
+ *   - `api_key` em texto puro só existe no campo de formulário e nunca entra no state
+ *   - Toda escrita sensível passa pela Edge Function, nunca por db.insert/update direto
+ *
+ * Depende de: config.js (ORBIT_CONFIG), supabase-client.js (db), auth-guard.js (OrbitSession)
  */
 
 import { getIntegrationIcon } from './integration-icons.js';
 
 /* ─── Catálogo local de metadados de UI ──────────────────────────────────────
- * Define campos do formulário e descrição para cada provider pelo slug.
+ * Define campos extras do formulário e descrição para cada provider pelo slug.
  * Mapeado contra ai_providers.slug do banco.
  */
 const PROVIDER_UI = {
@@ -54,13 +59,6 @@ const PROVIDER_UI = {
       { key: 'site_name', label: 'Site Name', type: 'text', placeholder: 'Meu App', optional: true },
     ],
   },
-  slack: {
-    category: 'Comunicação',
-    desc: 'Envie mensagens e notificações para canais do Slack',
-    fields: [
-      { key: 'signing_secret', label: 'Signing Secret', type: 'password', placeholder: '...' },
-    ],
-  },
   github: {
     category: 'Desenvolvimento',
     desc: 'Acesso a repositórios, issues e pull requests',
@@ -84,34 +82,36 @@ const PROVIDER_UI = {
 
 /* ─── State ──────────────────────────────────────────────────────────────────
  * integrations: rows de ai_integrations com join de ai_providers
+ *   Nota: `encrypted_key` NUNCA entra aqui — é mapeado para `has_key: boolean`
+ *         durante o carregamento e descartado.
  * providers: rows de ai_providers (catálogo)
  */
 const state = {
-  integrations:    [],
-  providers:       [],
-  filter:          'all',
-  search:          '',
-  panelId:         null,   // UUID da integração aberta no panel
-  activeTab:       'info',
-  configTargetId:  null,   // UUID da integração sendo configurada
-  catalogSelected: null,   // slug do provider selecionado no catálogo
-  confirmCallback: null,
+  integrations:        [],
+  providers:           [],
+  filter:              'all',
+  search:              '',
+  panelId:             null,   // UUID da integração aberta no panel
+  activeTab:           'info',
+  configTargetId:      null,   // UUID da integração sendo configurada
+  catalogSelected:     null,   // slug do provider selecionado no catálogo
+  catalogStep:         'pick', // 'pick' | 'custom'
+  confirmCallback:     null,
+  defaultIntegrationId: null,  // workspace_settings.default_integration_id
 };
 
 /* ─── Helpers locais ─────────────────────────────────────────────────────────*/
 
-/** Retorna a integração pelo UUID */
-const getInt = id => state.integrations.find(i => i.id === id);
-
-/** Retorna o provider pelo slug */
+const getInt      = id   => state.integrations.find(i => i.id === id);
 const getProvider = slug => state.providers.find(p => p.slug === slug);
+const getUI       = slug => PROVIDER_UI[slug] ?? { category: 'Outro', desc: '', fields: [] };
 
-/** Retorna metadados de UI do provider */
-const getUI = slug => PROVIDER_UI[slug] ?? { category: 'Outro', desc: '', fields: [] };
-
-/** Status derivado: tem secret_ref preenchido = connected, senão disconnected */
+/**
+ * Status derivado de `has_key` (boolean calculado no load a partir de encrypted_key).
+ * `secret_ref` é mantido no estado apenas como legado — não determina mais o status.
+ */
 function deriveStatus(integration) {
-  return integration.secret_ref ? 'connected' : 'disconnected';
+  return integration.has_key ? 'connected' : 'disconnected';
 }
 
 function relativeTime(ts) {
@@ -132,13 +132,35 @@ function statusLabel(s) {
   return { connected: 'Conectado', error: 'Erro', disconnected: 'Desconectado' }[s] ?? s;
 }
 
-function maskRef(v) {
-  if (!v) return '—';
-  if (v.length <= 6) return v;
-  return v.slice(0, 3) + '•••' + v.slice(-3);
-}
-
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ─── Edge Function: helper central ─────────────────────────────────────────
+ *
+ * Todas as escritas sensíveis (criar, editar, remover) passam por aqui.
+ * Nunca usa service_role — apenas o JWT do usuário logado.
+ * A URL base vem de ORBIT_CONFIG.functions.url (config.js), garantindo
+ * compatibilidade entre localhost e produção sem alterar este arquivo.
+ *
+ * Lança erro se a requisição falhar (HTTP não-2xx ou sem sessão ativa).
+ */
+async function callFunction(path, method, body) {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
+
+  const res = await fetch(`${ORBIT_CONFIG.functions.url}${path}`, {
+    method,
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey':        ORBIT_CONFIG.supabase.anonKey,
+      'Content-Type':  'application/json',
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok) throw new Error(json.error ?? `Erro HTTP ${res.status}`);
+  return json.data;
+}
 
 /* ─── Toast ──────────────────────────────────────────────────────────────────*/
 
@@ -183,65 +205,70 @@ async function loadProviders() {
 async function loadIntegrations() {
   const { workspaceId } = OrbitSession;
 
+  // Consulta a view segura: has_key é um boolean calculado no banco (encrypted_key IS NOT NULL).
+  // O ciphertext nunca sai do banco — nem no tráfego PostgREST → browser.
+  // Não usa join com ai_providers aqui; o merge é feito em JS com state.providers,
+  // que já foi carregado antes desta chamada (ver init sequencial abaixo).
   const { data, error } = await db
-    .from('ai_integrations')
-    .select('id, workspace_id, provider_id, name, secret_ref, deleted_at, created_at, updated_at, ai_providers(id, name, slug, base_url)')
+    .from('ai_integrations_safe')
+    .select('id, workspace_id, provider_id, name, secret_ref, has_key, deleted_at, created_at, updated_at')
     .eq('workspace_id', workspaceId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('Erro ao carregar ai_integrations:', error.message);
+    console.error('Erro ao carregar ai_integrations_safe:', error.message);
     return;
   }
-  state.integrations = data ?? [];
+
+  // Anexa o objeto de provider ao state para que os renders funcionem normalmente.
+  // state.providers já está populado porque loadProviders() roda antes.
+  state.integrations = (data ?? []).map(row => ({
+    ...row,
+    ai_providers: state.providers.find(p => p.id === row.provider_id) ?? null,
+  }));
 }
 
-/* ─── Banco: criar integração ────────────────────────────────────────────────*/
-
-async function createIntegration(providerSlug, name, secretRef) {
+async function loadDefaultIntegration() {
   const { workspaceId } = OrbitSession;
-  const provider = getProvider(providerSlug);
-  if (!provider) return null;
-
-  const { data, error } = await db
-    .from('ai_integrations')
-    .insert({
-      workspace_id: workspaceId,
-      provider_id:  provider.id,
-      name:         name || provider.name,
-      secret_ref:   secretRef || null,
-    })
-    .select('id, workspace_id, provider_id, name, secret_ref, deleted_at, created_at, updated_at, ai_providers(id, name, slug, base_url)')
-    .single();
-
-  if (error) {
-    console.error('Erro ao criar integração:', error.message);
-    return null;
-  }
-  return data;
+  const { data } = await db
+    .from('workspace_settings')
+    .select('default_integration_id')
+    .eq('workspace_id', workspaceId)
+    .maybeSingle();
+  state.defaultIntegrationId = data?.default_integration_id ?? null;
 }
 
-/* ─── Banco: atualizar integração ────────────────────────────────────────────*/
-
-async function updateIntegration(id, fields) {
+async function setDefaultIntegration(id) {
+  const { workspaceId } = OrbitSession;
   const { error } = await db
-    .from('ai_integrations')
-    .update(fields)
-    .eq('id', id)
-    .eq('workspace_id', OrbitSession.workspaceId);
-
-  if (error) {
-    console.error('Erro ao atualizar integração:', error.message);
-    return false;
-  }
-  return true;
+    .from('workspace_settings')
+    .upsert({ workspace_id: workspaceId, default_integration_id: id }, { onConflict: 'workspace_id' });
+  if (error) throw new Error(error.message);
+  state.defaultIntegrationId = id;
 }
 
-/* ─── Banco: soft-delete ─────────────────────────────────────────────────────*/
+/* ─── Edge Function: criar integração ───────────────────────────────────────
+ * Cria a integração sem API key — a key é adicionada via openConfigModal logo após.
+ * Anexa ai_providers ao resultado para manter o shape esperado pelo estado.
+ */
+async function createIntegration(providerId, name) {
+  const data = await callFunction('/integrations', 'POST', {
+    workspace_id: OrbitSession.workspaceId,
+    provider_id:  providerId,
+    name,
+  });
 
-async function softDeleteIntegration(id) {
-  return updateIntegration(id, { deleted_at: new Date().toISOString() });
+  // A EF retorna apenas provider_id; o state precisa do objeto completo para render.
+  const provider = state.providers.find(p => p.id === providerId);
+  return { ...data, ai_providers: provider ?? null };
+}
+
+/* ─── Edge Function: remover integração ─────────────────────────────────────
+ * Soft delete + limpeza de encrypted_key no backend.
+ */
+async function deleteIntegration(id) {
+  await callFunction(`/integrations/${id}`, 'DELETE');
 }
 
 /* ─── Render Stats ───────────────────────────────────────────────────────────*/
@@ -291,17 +318,23 @@ function renderRow(intData) {
   const statusClass = `int-status-${status}`;
   const panelOpen   = state.panelId === intData.id ? 'panel-open' : '';
 
+  // Integração conectada: botão primário é "Remover" (disconnect = delete no novo modelo).
+  // Integração desconectada: botão primário é "Configurar" (adicionar key).
   const toggleClass = status === 'connected' ? 'int-connect-btn-disconnect' : 'int-connect-btn-connect';
-  const toggleText  = status === 'connected' ? 'Desconectar' : 'Configurar';
+  const toggleText  = status === 'connected' ? 'Remover' : 'Configurar';
   const toggleIcon  = status === 'connected'
-    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/></svg>`
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>`
     : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
+
+  const defaultBadge = intData.id === state.defaultIntegrationId
+    ? `<span style="font-size:10px;font-weight:500;color:#818cf8;background:rgba(99,102,241,0.15);border-radius:4px;padding:1px 6px;margin-left:6px">Padrão</span>`
+    : '';
 
   return `
     <div class="int-row ${panelOpen}" data-id="${intData.id}">
       <div class="int-row-icon">${getIntegrationIcon(provider.slug, 16)}</div>
       <div class="int-row-info">
-        <div class="int-row-name">${escapeHTML(intData.name)}</div>
+        <div class="int-row-name">${escapeHTML(intData.name)}${defaultBadge}</div>
         <div class="int-row-cat">${getUI(provider.slug).category}</div>
       </div>
       <div class="int-status ${statusClass}">
@@ -337,7 +370,7 @@ function renderList() {
     if (!provider) return false;
     if (state.filter === 'connected'    && deriveStatus(i) !== 'connected')    return false;
     if (state.filter === 'disconnected' && deriveStatus(i) !== 'disconnected') return false;
-    if (state.filter === 'error')       return false; // sem status 'error' neste modelo
+    if (state.filter === 'error')       return false;
     if (state.search) {
       const q = state.search.toLowerCase();
       if (!i.name.toLowerCase().includes(q) && !provider.name.toLowerCase().includes(q)) return false;
@@ -382,7 +415,7 @@ function render() {
 /* ─── Panel ──────────────────────────────────────────────────────────────────*/
 
 function openPanel(id) {
-  state.panelId  = id;
+  state.panelId   = id;
   state.activeTab = 'info';
 
   const intData  = getInt(id);
@@ -424,7 +457,6 @@ function renderTabInfo(id) {
   const ui = getUI(provider.slug);
 
   const extraFields = ui.fields.map(f => {
-    // Campos extras ficam em localStorage (ephemeral), não no banco
     const val = localStorage.getItem(`orbit_int_${id}_${f.key}`) ?? '';
     return `
       <div class="info-row">
@@ -432,6 +464,24 @@ function renderTabInfo(id) {
         <span class="info-value plain">${val || '—'}</span>
       </div>`;
   }).join('');
+
+  // API Key: exibe apenas o estado (configurada / não configurada), nunca o valor.
+  const keyStatus = intData.has_key
+    ? `<span style="color:#4ade80;font-size:12px">Configurada</span>`
+    : `<span style="color:var(--text-muted);font-size:12px">Não configurada</span>`;
+
+  // Chat padrão: exibe botão "Definir como padrão" quando há key e não é o padrão.
+  const isDefault = intData.id === state.defaultIntegrationId;
+  const chatDefaultRow = intData.has_key ? `
+    <div class="info-section">
+      <div class="info-section-label">Chat</div>
+      <div class="info-row">
+        <span class="info-label">Chat padrão</span>
+        ${isDefault
+          ? `<span style="color:#4ade80;font-size:12px">Ativo</span>`
+          : `<button class="btn-sm btn-sm-ghost" id="setDefaultBtn" style="font-size:11px;padding:3px 10px">Definir como padrão</button>`}
+      </div>
+    </div>` : '';
 
   document.getElementById('tab-info').innerHTML = `
     <div class="info-section">
@@ -462,75 +512,47 @@ function renderTabInfo(id) {
         <span class="info-value plain">${escapeHTML(provider.name)}</span>
       </div>
       <div class="info-row">
-        <span class="info-label">Secret Ref</span>
-        <span class="info-value masked">${maskRef(intData.secret_ref)}</span>
+        <span class="info-label">API Key</span>
+        ${keyStatus}
       </div>
       ${extraFields}
     </div>
+    ${chatDefaultRow}
   `;
 }
 
 function renderTabLogs(id) {
-  // Logs de execuções serão conectados futuramente via tabela executions.
   document.getElementById('tab-logs').innerHTML =
     `<div class="log-empty">Logs disponíveis após execuções reais.</div>`;
 }
 
 function renderTabAgents(id) {
-  // Vínculo com agentes será conectado futuramente via tabela agents.
   document.getElementById('tab-agents').innerHTML =
     `<div class="log-empty">Vínculo com agentes disponível em breve.</div>`;
 }
 
-/* ─── Desconectar (limpa secret_ref no banco) ────────────────────────────────*/
-
-async function disconnectIntegration(id) {
-  const intData  = getInt(id);
-  const provider = intData?.ai_providers;
-  if (!intData) return;
-
-  const btn = document.querySelector(`.int-connect-btn[data-id="${id}"]`);
-  if (btn) {
-    btn.className = 'int-connect-btn int-connect-btn-loading';
-    btn.innerHTML = `<svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg> Desconectando...`;
-  }
-
-  const ok = await updateIntegration(id, { secret_ref: null });
-  if (ok) {
-    intData.secret_ref = null;
-    toast(`${provider?.name ?? 'Integração'} desconectada`, 'warning');
-  } else {
-    toast('Erro ao desconectar', 'error');
-  }
-
-  render();
-  if (state.panelId === id) {
-    document.getElementById('panelStatus').textContent = statusLabel(deriveStatus(intData));
-  }
-}
-
 /* ─── Testar conexão ─────────────────────────────────────────────────────────
- * Por ora apenas simula — a chamada real à API do provider
- * deve ir para Edge Function quando o backend existir.
+ * Teste real requer a Edge Function de chat (Etapa 4).
+ * Por ora verifica se a key está configurada e informa o estado.
  */
 async function testConnection(id) {
   const intData  = getInt(id);
   const provider = intData?.ai_providers;
 
-  if (!intData || deriveStatus(intData) !== 'connected') {
-    toast('Configure um secret_ref antes de testar', 'warning');
+  if (!intData || !intData.has_key) {
+    toast('Configure a API key antes de testar', 'warning');
     return;
   }
 
   const dismiss = toastLoading(`Testando conexão com ${provider?.name ?? 'provider'}...`);
   const btn = document.getElementById('panelTestBtn');
-  if (btn) { btn.disabled = true; }
+  if (btn) btn.disabled = true;
 
   await wait(1500);
   dismiss();
-  toast(`Teste simulado — backend necessário para teste real`, 'info');
+  toast('Key configurada. Teste real disponível após integração do chat.', 'info');
 
-  if (btn) { btn.disabled = false; }
+  if (btn) btn.disabled = false;
 }
 
 /* ─── Config Modal ───────────────────────────────────────────────────────────*/
@@ -545,9 +567,6 @@ function openConfigModal(id) {
 
   document.getElementById('configModalTitle').textContent = `Configurar · ${intData.name}`;
 
-  // secret_ref: identificador da key (ex: "GROK_API_KEY"), não a key em si
-  const secretRef = intData.secret_ref ?? '';
-
   const extraFields = ui.fields.map(f => {
     const val = localStorage.getItem(`orbit_int_${id}_${f.key}`) ?? '';
     const opt = f.optional ? `<span class="form-label-opt">(opcional)</span>` : '';
@@ -557,19 +576,36 @@ function openConfigModal(id) {
     </div>`;
   }).join('');
 
+  // Placeholder e hint variam se já há key configurada
+  const keyPlaceholder = intData.has_key ? '••••••••' : 'sk-...';
+  const keyHint = intData.has_key
+    ? `<span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block">Deixe em branco para manter a key atual. Criptografada no servidor.</span>`
+    : `<span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block">Criptografada no servidor — nunca armazenada em texto puro.</span>`;
+
   document.getElementById('configForm').innerHTML = `
     <div class="form-group">
       <label class="form-label">Nome da integração</label>
       <input class="form-input" type="text" id="configName" placeholder="${provider.name}" value="${escapeHTML(intData.name)}" />
     </div>
     <div class="form-group">
-      <label class="form-label">Secret Ref
-        <span class="form-label-opt" title="Identificador da chave no backend (ex: GROK_API_KEY). A chave real nunca é armazenada aqui.">(identificador da key)</span>
+      <label class="form-label">API Key
+        ${intData.has_key ? '<span class="form-label-opt">(opcional)</span>' : ''}
       </label>
-      <input class="form-input" type="text" id="configSecretRef" placeholder="NOME_DA_VARIAVEL_NO_BACKEND" value="${escapeHTML(secretRef)}" autocomplete="off" />
-      <span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block;">
-        Informe o nome da variável de ambiente que contém a API key no backend. Ex: <code>OPENROUTER_API_KEY</code>
-      </span>
+      <div style="position:relative">
+        <input class="form-input" type="password" id="configApiKey"
+               placeholder="${keyPlaceholder}"
+               autocomplete="new-password"
+               style="padding-right:36px" />
+        <button type="button"
+                style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px;display:flex;align-items:center"
+                onclick="toggleEye(this)" tabindex="-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+      ${keyHint}
     </div>
     ${extraFields}
   `;
@@ -584,10 +620,10 @@ async function saveConfig() {
   const intData = getInt(id);
   if (!intData) return;
 
-  const name      = document.getElementById('configName')?.value.trim()      || intData.name;
-  const secretRef = document.getElementById('configSecretRef')?.value.trim() || null;
+  const name   = document.getElementById('configName')?.value.trim() || intData.name;
+  const apiKey = document.getElementById('configApiKey')?.value.trim() || null;
 
-  // Salva campos extras em localStorage (não são críticos para o banco)
+  // Campos extras em localStorage (não críticos, não passam pela EF)
   document.querySelectorAll('#configForm [data-extra-key]').forEach(el => {
     const k = el.dataset.extraKey;
     const v = el.value.trim();
@@ -595,22 +631,38 @@ async function saveConfig() {
     else   localStorage.removeItem(`orbit_int_${id}_${k}`);
   });
 
-  const dismiss = toastLoading('Salvando...');
-  const ok = await updateIntegration(id, { name, secret_ref: secretRef });
-  dismiss();
+  // Monta payload: inclui apenas o que mudou
+  const payload = {};
+  if (name !== intData.name) payload.name    = name;
+  if (apiKey)                payload.api_key = apiKey;
 
-  if (ok) {
-    intData.name       = name;
-    intData.secret_ref = secretRef;
+  // Se nada mudou de relevante (nome igual e sem nova key), fecha sem chamada
+  if (Object.keys(payload).length === 0) {
     closeModal('configModal');
-    toast(`Configuração salva`, 'success');
+    return;
+  }
+
+  const dismiss = toastLoading('Salvando...');
+
+  try {
+    const data = await callFunction(`/integrations/${id}`, 'PATCH', payload);
+
+    // Atualiza estado local com o retorno da EF (fonte de verdade após write)
+    intData.name    = data.name;
+    intData.has_key = data.has_key;
+
+    closeModal('configModal');
+    toast('Configuração salva', 'success');
     render();
+
     if (state.panelId === id) {
-      document.getElementById('panelName').textContent   = name;
+      document.getElementById('panelName').textContent   = data.name;
       document.getElementById('panelStatus').textContent = statusLabel(deriveStatus(intData));
     }
-  } else {
-    toast('Erro ao salvar. Tente novamente.', 'error');
+  } catch (e) {
+    toast(`Erro ao salvar: ${e.message}`, 'error');
+  } finally {
+    dismiss();
   }
 }
 
@@ -627,18 +679,20 @@ function confirmRemove(id) {
   state.confirmCallback = async () => {
     closeModal('confirmModal');
     const dismiss = toastLoading('Removendo...');
-    const ok = await softDeleteIntegration(id);
-    dismiss();
 
-    if (ok) {
+    try {
+      await deleteIntegration(id);
       state.integrations = state.integrations.filter(i => i.id !== id);
+      if (state.defaultIntegrationId === id) state.defaultIntegrationId = null;
       if (state.panelId === id) closePanel();
-      toast(`Integração removida`, 'warning');
+      toast('Integração removida', 'warning');
       render();
-    } else {
-      toast('Erro ao remover. Tente novamente.', 'error');
+    } catch (e) {
+      toast(`Erro ao remover: ${e.message}`, 'error');
+    } finally {
+      dismiss();
+      state.confirmCallback = null;
     }
-    state.confirmCallback = null;
   };
 
   openModal('confirmModal');
@@ -646,22 +700,50 @@ function confirmRemove(id) {
 
 /* ─── Catálogo Modal ─────────────────────────────────────────────────────────*/
 
-function openCatalog() {
-  state.catalogSelected = null;
-  document.getElementById('catalogNextBtn').disabled = true;
+function renderCatalogContent() {
+  const subtitle = document.getElementById('catalogSubtitle');
+  const backBtn  = document.getElementById('catalogBackBtn');
+  const nextBtn  = document.getElementById('catalogNextBtn');
 
-  // providers que já têm integração ativa no workspace
+  if (state.catalogStep === 'custom') {
+    subtitle.textContent       = 'Configurar provider customizado';
+    backBtn.style.display      = '';
+    nextBtn.textContent        = 'Criar';
+    nextBtn.disabled           = false;
+
+    document.getElementById('catalogGrid').innerHTML = `
+      <div style="padding:0 4px">
+        <div class="form-group">
+          <label class="form-label">Nome do provider</label>
+          <input class="form-input" type="text" id="customProviderName" placeholder="Meu LLM" />
+        </div>
+        <div class="form-group" style="margin-top:14px">
+          <label class="form-label">Base URL
+            <span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:4px">deve ser HTTPS</span>
+          </label>
+          <input class="form-input" type="url" id="customProviderUrl" placeholder="https://api.meu-llm.com/v1" />
+        </div>
+      </div>`;
+    return;
+  }
+
+  // step 'pick'
+  subtitle.textContent  = 'Selecione o serviço que deseja integrar';
+  backBtn.style.display = 'none';
+  nextBtn.textContent   = 'Próximo';
+  nextBtn.disabled      = true;
+  state.catalogSelected = null;
+
   const existingSlugs = new Set(
     state.integrations.map(i => i.ai_providers?.slug).filter(Boolean)
   );
 
-  // Mostra providers do banco + fallback para os que têm UI definida localmente
   const allSlugs = new Set([
     ...state.providers.map(p => p.slug),
     ...Object.keys(PROVIDER_UI),
   ]);
 
-  document.getElementById('catalogGrid').innerHTML = [...allSlugs].map(slug => {
+  const providerItems = [...allSlugs].map(slug => {
     const provider = getProvider(slug);
     const ui       = getUI(slug);
     const name     = provider?.name ?? slug;
@@ -674,6 +756,24 @@ function openCatalog() {
       </button>`;
   }).join('');
 
+  const customItem = `
+    <button class="catalog-item" data-catalog-action="custom">
+      <div class="catalog-item-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </div>
+      <div class="catalog-item-name">Provider customizado</div>
+      <div class="catalog-item-cat">Qualquer API compatível</div>
+    </button>`;
+
+  document.getElementById('catalogGrid').innerHTML = providerItems + customItem;
+}
+
+function openCatalog() {
+  state.catalogStep    = 'pick';
+  state.catalogSelected = null;
+  renderCatalogContent();
   openModal('catalogModal');
 }
 
@@ -694,7 +794,9 @@ document.addEventListener('click', async e => {
     const { id, action } = actionBtn.dataset;
     if (action === 'toggle') {
       const intData = getInt(id);
-      if (intData && deriveStatus(intData) === 'connected') disconnectIntegration(id);
+      // Conectada: botão primário da linha é "Remover" → confirmação antes de deletar
+      // Desconectada: abre o modal de configuração para adicionar a key
+      if (intData && deriveStatus(intData) === 'connected') confirmRemove(id);
       else openConfigModal(id);
     }
     if (action === 'config') openConfigModal(id);
@@ -719,6 +821,20 @@ document.addEventListener('click', async e => {
   if (e.target.closest('#panelTestBtn')   && state.panelId) { testConnection(state.panelId);  return; }
   if (e.target.closest('#panelRemoveBtn') && state.panelId) { confirmRemove(state.panelId);   return; }
 
+  if (e.target.closest('#setDefaultBtn') && state.panelId) {
+    const dismiss = toastLoading('Atualizando padrão...');
+    try {
+      await setDefaultIntegration(state.panelId);
+      toast('Integração definida como padrão para o chat', 'success');
+      render();
+    } catch (err) {
+      toast(`Erro ao definir padrão: ${err.message}`, 'error');
+    } finally {
+      dismiss();
+    }
+    return;
+  }
+
   if (e.target.closest('#saveConfigBtn')) { saveConfig(); return; }
 
   if (e.target.closest('#confirmOkBtn') && state.confirmCallback) {
@@ -726,7 +842,22 @@ document.addEventListener('click', async e => {
     return;
   }
 
-  const catalogItem = e.target.closest('.catalog-item:not([disabled])');
+  // Botão "← Voltar" no catálogo (step custom → pick)
+  if (e.target.closest('#catalogBackBtn')) {
+    state.catalogStep = 'pick';
+    renderCatalogContent();
+    return;
+  }
+
+  // Item "Provider customizado" no catálogo
+  const catalogCustom = e.target.closest('[data-catalog-action="custom"]');
+  if (catalogCustom) {
+    state.catalogStep = 'custom';
+    renderCatalogContent();
+    return;
+  }
+
+  const catalogItem = e.target.closest('.catalog-item:not([disabled]):not([data-catalog-action])');
   if (catalogItem) {
     document.querySelectorAll('.catalog-item').forEach(i => i.classList.remove('selected'));
     catalogItem.classList.add('selected');
@@ -735,26 +866,56 @@ document.addEventListener('click', async e => {
     return;
   }
 
-  if (e.target.closest('#catalogNextBtn') && state.catalogSelected) {
-    const slug     = state.catalogSelected;
-    const provider = getProvider(slug);
-    if (!provider) {
-      toast(`Provider "${slug}" não encontrado no banco. Adicione-o em ai_providers.`, 'error');
+  if (e.target.closest('#catalogNextBtn')) {
+    // Passo 'custom': cria provider customizado e depois a integração
+    if (state.catalogStep === 'custom') {
+      const name = document.getElementById('customProviderName')?.value.trim();
+      const url  = document.getElementById('customProviderUrl')?.value.trim();
+      if (!name || !url) { toast('Preencha nome e URL do provider', 'warning'); return; }
+
+      closeModal('catalogModal');
+      const dismiss = toastLoading('Criando provider...');
+      try {
+        const providerData = await callFunction('/integrations/providers', 'POST', {
+          workspace_id: OrbitSession.workspaceId,
+          name,
+          base_url: url,
+        });
+        state.providers.push(providerData);
+        const created = await createIntegration(providerData.id, providerData.name);
+        state.integrations.unshift(created);
+        render();
+        openConfigModal(created.id);
+      } catch (err) {
+        toast(`Erro ao criar provider: ${err.message}`, 'error');
+      } finally {
+        dismiss();
+      }
       return;
     }
 
-    closeModal('catalogModal');
+    // Passo 'pick': cria integração com provider existente
+    if (state.catalogSelected) {
+      const slug     = state.catalogSelected;
+      const provider = getProvider(slug);
+      if (!provider) {
+        toast(`Provider "${slug}" não encontrado no banco.`, 'error');
+        return;
+      }
 
-    const dismiss = toastLoading('Criando integração...');
-    const created = await createIntegration(slug, provider.name, null);
-    dismiss();
+      closeModal('catalogModal');
 
-    if (created) {
-      state.integrations.unshift(created);
-      render();
-      openConfigModal(created.id);
-    } else {
-      toast('Erro ao criar integração. Tente novamente.', 'error');
+      const dismiss = toastLoading('Criando integração...');
+      try {
+        const created = await createIntegration(provider.id, provider.name);
+        state.integrations.unshift(created);
+        render();
+        openConfigModal(created.id);
+      } catch (err) {
+        toast(`Erro ao criar: ${err.message}`, 'error');
+      } finally {
+        dismiss();
+      }
     }
     return;
   }
@@ -781,7 +942,9 @@ document.getElementById('searchInput').addEventListener('input', e => {
 
 window.toggleEye = btn => {
   const input = btn.previousElementSibling;
-  input.type = input.type === 'password' ? 'text' : 'password';
+  if (input?.tagName === 'INPUT') {
+    input.type = input.type === 'password' ? 'text' : 'password';
+  }
 };
 
 /* ─── Init ───────────────────────────────────────────────────────────────────
@@ -790,7 +953,10 @@ window.toggleEye = btn => {
  */
 document.addEventListener('orbitSessionReady', async () => {
   const dismiss = toastLoading('Carregando integrações...');
-  await Promise.all([loadProviders(), loadIntegrations()]);
+  // Sequential: providers primeiro, porque loadIntegrations faz merge com state.providers.
+  // loadDefaultIntegration é independente de providers, corre em paralelo com loadIntegrations.
+  await loadProviders();
+  await Promise.all([loadIntegrations(), loadDefaultIntegration()]);
   dismiss();
   render();
 });

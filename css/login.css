@@ -49,6 +49,12 @@
   font-feature-settings: 'ss01', 'cv01';
 }
 
+.login-brand-logo {
+  height: 36px;
+  width: auto;
+  display: block;
+}
+
 .login-subtitle {
   font-size: 12.5px;
   color: #3a3a3a;

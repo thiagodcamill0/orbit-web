@@ -1,16 +1,40 @@
-// ─── chat-completion/index.ts ─────────────────────────────────────────────────
-// Edge Function: recebe mensagem do frontend, chama LLM via OpenRouter,
-// persiste a resposta como role='assistant' com service role.
-//
-// Env vars necessárias (supabase secrets set / .env.local):
-//   SUPABASE_URL              — automático no runtime Supabase
-//   SUPABASE_SERVICE_ROLE_KEY — automático no runtime Supabase
-//   SUPABASE_ANON_KEY         — automático no runtime Supabase
-//   <secret_ref>              — nome do secret definido em ai_integrations.secret_ref
-//                               ex: OPENROUTER_API_KEY=sk-or-...
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Edge Function: chat-completion
+ *
+ * Proxy seguro entre o frontend e o LLM configurado no workspace.
+ *
+ * Rota:
+ *   POST /functions/v1/chat-completion
+ *
+ * Body:
+ *   { conversation_id: string, workspace_id: string }
+ *   Nota: agent_id NÃO é passado — é derivado da conversa (conversations.agent_id),
+ *   eliminando qualquer risco de usar o contexto de uma conversa com o prompt/modelo
+ *   de um agente diferente.
+ *
+ * Fluxo:
+ *   1. Valida JWT e membership do workspace
+ *   2. Carrega a conversa (status + agent_id) e valida que pertence ao workspace
+ *   3. Carrega o agente a partir de conversations.agent_id
+ *   4. Resolve integração via workspace_settings.default_integration_id
+ *   4. Decripta a API key server-side (encrypted_key + ENCRYPTION_SECRET)
+ *   5. Valida status da conversa antes de gastar a chamada ao LLM
+ *   6. Carrega histórico de mensagens (últimas MAX_CONTEXT_MESSAGES)
+ *   7. Chama o LLM (formato OpenAI-compatible)
+ *   8. Persiste role='assistant' via service_role (contorna a RLS que restringe
+ *      authenticated a role='user')
+ *   9. Retorna { content }
+ *
+ * Variáveis de ambiente:
+ *   SUPABASE_URL              — injetada automaticamente
+ *   SUPABASE_ANON_KEY         — injetada automaticamente
+ *   SUPABASE_SERVICE_ROLE_KEY — injetada automaticamente
+ *   ENCRYPTION_SECRET         — base64 de 32 bytes; configurar manualmente
+ *   APP_URL                   — opcional; usado como HTTP-Referer para o OpenRouter
+ */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { decryptApiKey } from '../_shared/crypto.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -19,83 +43,150 @@ const CORS = {
   'Access-Control-Max-Age':       '86400',
 };
 
+// Número máximo de mensagens enviadas como contexto ao LLM.
+// Mantém tokens sob controle; aumentar conforme necessário.
 const MAX_CONTEXT_MESSAGES = 20;
+
+function jsonRes(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS, 'Content-Type': 'application/json' },
+  });
+}
+
+function errRes(message: string, status: number): Response {
+  return jsonRes({ error: message }, status);
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS });
+    return new Response(null, { status: 204, headers: CORS });
+  }
+
+  if (req.method !== 'POST') {
+    return errRes('Method not allowed', 405);
   }
 
   try {
-    // ── Auth ────────────────────────────────────────────────────────────────
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return errorRes('Missing authorization header', 401);
+    // ── Variáveis de ambiente ────────────────────────────────────────────────
+    const supabaseUrl      = Deno.env.get('SUPABASE_URL')!;
+    const serviceRoleKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const anonKey          = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const encryptionSecret = Deno.env.get('ENCRYPTION_SECRET');
+    const appUrl           = Deno.env.get('APP_URL') ?? '';
 
-    const supabaseUrl            = Deno.env.get('SUPABASE_URL')!;
-    const serviceRoleKey         = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const anonKey                = Deno.env.get('SUPABASE_ANON_KEY')!;
-
-    // User client — verifies JWT and respects RLS
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: { user }, error: authErr } = await userClient.auth.getUser();
-    if (authErr || !user) return errorRes('Unauthorized', 401);
-
-    // Service role client — for privileged reads and assistant INSERT
-    const svc = createClient(supabaseUrl, serviceRoleKey);
-
-    // ── Body ────────────────────────────────────────────────────────────────
-    const { conversation_id, agent_id, workspace_id } = await req.json();
-    if (!conversation_id || !agent_id || !workspace_id) {
-      return errorRes('Missing required fields: conversation_id, agent_id, workspace_id', 400);
+    if (!encryptionSecret) {
+      console.error('[chat-completion] ENCRYPTION_SECRET is not set');
+      return errRes('Server misconfiguration', 500);
     }
 
-    // ── Verify user belongs to workspace ────────────────────────────────────
+    // ── Auth ─────────────────────────────────────────────────────────────────
+    const rawAuth    = req.headers.get('Authorization') ?? '';
+    const authHeader = rawAuth.startsWith('Bearer ') ? rawAuth : rawAuth ? `Bearer ${rawAuth}` : '';
+    if (!authHeader) return errRes('Missing authorization header', 401);
+
+    const userClient = createClient(supabaseUrl, anonKey);
+    const jwt = authHeader.replace(/^Bearer\s+/i, '');
+    const { data: { user }, error: authErr } = await userClient.auth.getUser(jwt);
+    if (authErr || !user) return errRes('Unauthorized', 401);
+
+    // Client privilegiado para reads e writes sensíveis
+    const svc = createClient(supabaseUrl, serviceRoleKey);
+
+    // ── Body ─────────────────────────────────────────────────────────────────
+    const body = await req.json().catch(() => null);
+    if (!body) return errRes('Invalid JSON body', 400);
+
+    const { conversation_id, workspace_id } = body as Record<string, unknown>;
+    if (!conversation_id || !workspace_id) {
+      return errRes('Missing required fields: conversation_id, workspace_id', 400);
+    }
+
+    // ── Membership ───────────────────────────────────────────────────────────
     const { data: member } = await svc
       .from('workspace_members')
-      .select('id')
+      .select('user_id')
       .eq('workspace_id', workspace_id)
       .eq('user_id', user.id)
       .maybeSingle();
-    if (!member) return errorRes('Forbidden', 403);
+    if (!member) return errRes('Forbidden', 403);
 
-    // ── Fetch agent ──────────────────────────────────────────────────────────
+    // ── Conversa — fonte de verdade para agent_id ─────────────────────────────
+    // agent_id é derivado aqui, não aceito do body, evitando que o caller
+    // misture conversation_id de um agente com agent_id de outro.
+    // A validação de status (limit_reached / archived) também fica centralizada aqui,
+    // antes de qualquer query adicional.
+    const { data: conversation, error: convErr } = await svc
+      .from('conversations')
+      .select('agent_id, status')
+      .eq('id', conversation_id)
+      .eq('workspace_id', workspace_id)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (convErr || !conversation) return errRes('Conversation not found', 404);
+
+    if (conversation.status === 'limit_reached') {
+      return errRes('This conversation reached the 200-message limit. Start a new one.', 400);
+    }
+    if (conversation.status === 'archived') {
+      return errRes('This conversation is archived and cannot receive new messages.', 400);
+    }
+
+    // ── Agente — carregado a partir de conversations.agent_id ────────────────
     const { data: agent, error: agentErr } = await svc
       .from('agents')
       .select('model_id, system_prompt')
-      .eq('id', agent_id)
+      .eq('id', conversation.agent_id)
       .eq('workspace_id', workspace_id)
       .is('deleted_at', null)
-      .single();
-    if (agentErr || !agent) return errorRes('Agent not found', 404);
+      .maybeSingle();
 
-    // ── Fetch active integration for workspace ───────────────────────────────
+    if (agentErr || !agent) return errRes('Agent not found', 404);
+    if (!agent.model_id)    return errRes('Agent has no model configured', 400);
+
+    // ── Integração via workspace_settings.default_integration_id ─────────────
+    // A integração padrão do workspace é a fonte de API key para o chat.
+    const { data: wSettings, error: wsErr } = await svc
+      .from('workspace_settings')
+      .select('default_integration_id')
+      .eq('workspace_id', workspace_id)
+      .maybeSingle();
+
+    if (wsErr || !wSettings?.default_integration_id) {
+      return errRes('No default integration configured. Set one in Integrations.', 422);
+    }
+
     const { data: integration, error: intErr } = await svc
       .from('ai_integrations')
-      .select('secret_ref, ai_providers(base_url)')
+      .select('encrypted_key, ai_providers(base_url)')
+      .eq('id', wSettings.default_integration_id)
       .eq('workspace_id', workspace_id)
       .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
       .maybeSingle();
 
     if (intErr || !integration) {
-      return errorRes('No active integration found for this workspace. Add one in Integrations.', 422);
+      return errRes('Default integration not found or was removed', 422);
+    }
+    if (!integration.encrypted_key) {
+      return errRes('Default integration has no API key configured. Add one in Integrations.', 422);
     }
 
-    const secretRef = integration.secret_ref;
-    if (!secretRef) return errorRes('Integration has no secret_ref configured.', 422);
+    const provider = integration.ai_providers as { base_url: string | null } | null;
+    const baseUrl  = provider?.base_url ?? 'https://openrouter.ai/api/v1';
 
-    const apiKey = Deno.env.get(secretRef);
-    if (!apiKey) return errorRes(`Secret "${secretRef}" not found in environment.`, 500);
+    // ── Decripta a API key (permanece exclusivamente neste scope) ─────────────
+    let apiKey: string;
+    try {
+      apiKey = await decryptApiKey(integration.encrypted_key, encryptionSecret);
+    } catch {
+      console.error('[chat-completion] Failed to decrypt API key');
+      return errRes('Failed to decrypt API key', 500);
+    }
 
-    const provider  = integration.ai_providers as { base_url: string | null };
-    const baseUrl   = provider?.base_url ?? 'https://openrouter.ai/api/v1';
-    const modelId   = agent.model_id ?? 'openai/gpt-4o-mini';
-
-    // ── Fetch conversation history ───────────────────────────────────────────
+    // ── Histórico de mensagens ────────────────────────────────────────────────
+    // Busca as últimas MAX_CONTEXT_MESSAGES em ordem descendente e reverte,
+    // preservando a ordem cronológica para o LLM.
     const { data: history } = await svc
       .from('messages')
       .select('role, content')
@@ -104,60 +195,63 @@ Deno.serve(async (req) => {
       .limit(MAX_CONTEXT_MESSAGES);
 
     const messages = [
-      ...(agent.system_prompt
-        ? [{ role: 'system', content: agent.system_prompt }]
+      ...(agent.system_prompt?.trim()
+        ? [{ role: 'system', content: agent.system_prompt.trim() }]
         : []),
       ...(history ?? []).reverse(),
     ];
 
-    // ── Call LLM (OpenAI-compatible) ─────────────────────────────────────────
-    const llmRes = await fetch(`${baseUrl}/chat/completions`, {
+    // ── Chamada ao LLM (OpenAI-compatible) ────────────────────────────────────
+    const llmRes = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',
         'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer':  supabaseUrl,
-        'X-Title':       'Orbit',
+        ...(appUrl ? { 'HTTP-Referer': appUrl } : {}),
+        'X-Title': 'Orbit',
       },
-      body: JSON.stringify({ model: modelId, messages }),
+      body: JSON.stringify({
+        model:    agent.model_id,
+        messages,
+      }),
     });
 
     if (!llmRes.ok) {
-      const errText = await llmRes.text();
-      console.error('LLM error:', llmRes.status, errText);
-      return errorRes(`LLM call failed: ${llmRes.status}`, 502);
+      const errText = await llmRes.text().catch(() => '');
+      console.error(`[chat-completion] LLM error ${llmRes.status}:`, errText);
+      return errRes(`LLM provider returned an error (HTTP ${llmRes.status})`, 502);
     }
 
-    const llmJson  = await llmRes.json();
-    const content  = llmJson.choices?.[0]?.message?.content;
-    if (!content) return errorRes('Empty response from LLM', 502);
+    const llmJson = await llmRes.json().catch(() => null);
+    const content = llmJson?.choices?.[0]?.message?.content ?? null;
+    if (!content) {
+      console.error('[chat-completion] Unexpected LLM response:', JSON.stringify(llmJson));
+      return errRes('LLM returned an unexpected response format', 502);
+    }
 
-    // ── Persist assistant message (service role — bypasses RLS) ─────────────
+    // ── Persiste a resposta do assistente ─────────────────────────────────────
+    // service_role contorna a policy messages_insert_user (authenticated só
+    // pode inserir role='user'). O trigger validate_message_insert ainda corre
+    // e bloqueia se a conversa atingiu o limite no intervalo desta chamada.
     const { error: insertErr } = await svc.from('messages').insert({
       conversation_id,
       workspace_id,
       role:    'assistant',
       content,
     });
+
     if (insertErr) {
-      console.error('Insert assistant message error:', insertErr);
-      return errorRes('Failed to persist assistant message', 500);
+      if (insertErr.message?.includes('200-message limit')) {
+        return errRes('Conversation reached the 200-message limit.', 400);
+      }
+      console.error('[chat-completion] Failed to persist assistant message:', insertErr.message);
+      return errRes('Failed to save assistant response', 500);
     }
 
-    return new Response(
-      JSON.stringify({ content }),
-      { headers: { ...CORS, 'Content-Type': 'application/json' } },
-    );
+    return jsonRes({ content });
 
   } catch (err) {
-    console.error('Unhandled error:', err);
-    return errorRes('Internal server error', 500);
+    console.error('[chat-completion] Unhandled error:', err);
+    return errRes('Internal server error', 500);
   }
 });
-
-function errorRes(message: string, status: number): Response {
-  return new Response(
-    JSON.stringify({ error: message }),
-    { status, headers: { ...CORS, 'Content-Type': 'application/json' } },
-  );
-}

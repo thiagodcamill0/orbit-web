@@ -137,6 +137,14 @@
 
 .agent-action:hover { color: rgba(255, 255, 255, 0.85); }
 
+/* ─── Hover: actions appear at reduced opacity ── */
+
+.agent-node:hover .agent-action {
+  opacity: 0.5;
+  transform: translateX(0);
+  pointer-events: all;
+}
+
 /* ─── Edit mode: actions slide in L→R ───────── */
 
 .agent-node.editing .agent-action {
@@ -472,7 +480,7 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   width: 380px;
-  overflow: hidden;
+  overflow: visible;
   transform: translateY(8px) scale(0.98);
   transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }

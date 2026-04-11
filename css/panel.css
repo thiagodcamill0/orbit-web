@@ -20,6 +20,10 @@
   transform: translateX(0);
 }
 
+.agent-panel:not(.open) {
+  pointer-events: none;
+}
+
 /* ─── Header ─────────────────────────────────── */
 
 .agent-panel-header {
@@ -408,4 +412,319 @@
 .panel-btn-accent:hover {
   background: var(--accent-hover);
   box-shadow: 0 0 16px var(--accent-glow);
+}
+
+/* ─── Custom model picker ────────────────────────────────────────────────────── */
+
+.model-picker {
+  position: relative;
+  width: 100%;
+}
+
+/* ── Trigger (closed state) ─────────────────────────────────────────────────── */
+
+.mpicker-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.mpicker-trigger:hover {
+  border-color: var(--border-light);
+}
+
+.model-picker.open .mpicker-trigger,
+.mpicker-trigger:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* Provider icon inside trigger */
+.mpicker-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mpicker-icon-wrap img {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  object-fit: contain;
+}
+
+.mpicker-icon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.mpicker-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.mpicker-arrow {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.model-picker.open .mpicker-arrow {
+  transform: rotate(180deg);
+}
+
+/* ── Menu (absolute popover) ─────────────────────────────────────────────────── */
+
+.mpicker-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: var(--bg-surface);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03);
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: max-height 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity    0.15s ease;
+}
+
+.model-picker.open .mpicker-menu {
+  max-height: 300px;
+  opacity: 1;
+  pointer-events: all;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Search bar ──────────────────────────────────────────────────────────────── */
+
+.mpicker-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.02);
+}
+
+.mpicker-search-icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.mpicker-search-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  caret-color: var(--accent);
+}
+
+.mpicker-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ── Options list ────────────────────────────────────────────────────────────── */
+
+.mpicker-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px;
+}
+
+.mpicker-list::-webkit-scrollbar { width: 3px; }
+.mpicker-list::-webkit-scrollbar-track { background: transparent; }
+.mpicker-list::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 99px; }
+.mpicker-list::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Group header */
+.mpicker-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  pointer-events: none;
+  user-select: none;
+}
+
+.mpicker-group .mpicker-icon-wrap img,
+.mpicker-group .mpicker-icon-fallback {
+  width: 12px;
+  height: 12px;
+  font-size: 7px;
+  opacity: 0.6;
+}
+
+/* Option button */
+.mpicker-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.mpicker-option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.mpicker-option.active {
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.mpicker-option.active .mpicker-opt-provider {
+  color: rgba(99, 102, 241, 0.5);
+}
+
+.mpicker-option.mpicker-legacy {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Option icon slot */
+.mpicker-opt-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mpicker-opt-icon img {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.mpicker-opt-icon .mpicker-icon-fallback {
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
+}
+
+/* Option info (name + provider) */
+.mpicker-opt-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mpicker-opt-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mpicker-opt-provider {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Empty & no-results states ───────────────────────────────────────────────── */
+
+.mpicker-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.7;
+}
+
+.mpicker-empty svg {
+  opacity: 0.3;
+}
+
+.mpicker-empty a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mpicker-no-results {
+  padding: 12px 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── Disabled trigger ────────────────────────────────────────────────────────── */
+
+.mpicker-trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mpicker-trigger:disabled:hover {
+  border-color: var(--border);
+}
+
+/* Create modal — match .create-input sizing */
+#createModel .mpicker-trigger {
+  padding: 9px 11px;
+  font-size: 13px;
 }

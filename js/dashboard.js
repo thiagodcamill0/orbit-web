@@ -61,15 +61,6 @@ async function loadAgents() {
   state.agents = enrichWithStatus(data ?? []);
 }
 
-async function softDeleteAgent(id) {
-  const { error } = await db
-    .from('agents')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('workspace_id', OrbitSession.workspaceId);
-
-  if (error) throw new Error(error.message);
-}
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 function render() {
@@ -156,14 +147,14 @@ function agentCardHTML(agent) {
           ${timeAgo(new Date(agent.created_at))}
         </div>
         <div class="agent-card-actions">
-          <button class="icon-btn" data-action="delete" data-id="${agent.id}" title="Remover">
+          <a class="icon-btn" href="agents.html" title="Abrir no canvas">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6l-1 14H6L5 6"/>
-              <path d="M10 11v6M14 11v6"/>
-              <path d="M9 6V4h6v2"/>
+              <rect x="3" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/>
             </svg>
-          </button>
+          </a>
         </div>
       </div>
     </div>
@@ -192,14 +183,14 @@ function agentRowHTML(agent) {
         </div>
       </div>
       <div class="agent-card-actions">
-        <button class="icon-btn" data-action="delete" data-id="${agent.id}">
+        <a class="icon-btn" href="agents.html" title="Abrir no canvas">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6l-1 14H6L5 6"/>
-            <path d="M10 11v6M14 11v6"/>
-            <path d="M9 6V4h6v2"/>
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
           </svg>
-        </button>
+        </a>
       </div>
     </div>
   `;
@@ -252,24 +243,7 @@ function bindViewToggle() {
 }
 
 function bindAgentActions() {
-  document.querySelectorAll('[data-action="delete"]').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.id;
-      const dismiss = toastLoading('Removendo agente...');
-      try {
-        await softDeleteAgent(id);
-        removeStatus(id);
-        state.agents = state.agents.filter(a => a.id !== id);
-        dismiss();
-        toast('Agente removido', 'success');
-        render();
-      } catch (err) {
-        dismiss();
-        toast('Erro ao remover agente', 'error');
-      }
-    });
-  });
+  // Deletion happens exclusively on the canvas (agents.html). No delete actions here.
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
