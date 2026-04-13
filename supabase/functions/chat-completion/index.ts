@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
   try {
     // ── Variáveis de ambiente ────────────────────────────────────────────────
     const supabaseUrl      = Deno.env.get('SUPABASE_URL')!;
-    const serviceRoleKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const serviceRoleKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const anonKey          = Deno.env.get('SUPABASE_ANON_KEY')!;
     const encryptionSecret = Deno.env.get('ENCRYPTION_SECRET');
     const appUrl           = Deno.env.get('APP_URL') ?? '';
@@ -79,37 +79,52 @@ Deno.serve(async (req) => {
       console.error('[chat-completion] ENCRYPTION_SECRET is not set');
       return errRes('Server misconfiguration', 500);
     }
+    if (!serviceRoleKey) {
+      console.error('[chat-completion] SUPABASE_SERVICE_ROLE_KEY is not set');
+      return errRes('Server misconfiguration', 500);
+    }
 
     // ── Auth ─────────────────────────────────────────────────────────────────
     const rawAuth    = req.headers.get('Authorization') ?? '';
     const authHeader = rawAuth.startsWith('Bearer ') ? rawAuth : rawAuth ? `Bearer ${rawAuth}` : '';
     if (!authHeader) return errRes('Missing authorization header', 401);
 
-    const userClient = createClient(supabaseUrl, anonKey);
+    const userClient = createClient(supabaseUrl, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
     const jwt = authHeader.replace(/^Bearer\s+/i, '');
     const { data: { user }, error: authErr } = await userClient.auth.getUser(jwt);
     if (authErr || !user) return errRes('Unauthorized', 401);
 
     // Client privilegiado para reads e writes sensíveis
-    const svc = createClient(supabaseUrl, serviceRoleKey);
+    const svc = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
     // ── Body ─────────────────────────────────────────────────────────────────
     const body = await req.json().catch(() => null);
     if (!body) return errRes('Invalid JSON body', 400);
 
-    const { conversation_id, workspace_id } = body as Record<string, unknown>;
+    const { conversation_id, workspace_id, agent_id } = body as Record<string, unknown>;
     if (!conversation_id || !workspace_id) {
       return errRes('Missing required fields: conversation_id, workspace_id', 400);
     }
 
+    console.log('[chat-completion] body=', { conversation_id, workspace_id, agent_id });
+    console.log('[chat-completion] user.id=', user.id);
+
     // ── Membership ───────────────────────────────────────────────────────────
-    const { data: member } = await svc
+    const { data: member, error: memberErr } = await svc
       .from('workspace_members')
       .select('user_id')
       .eq('workspace_id', workspace_id)
       .eq('user_id', user.id)
       .maybeSingle();
-    if (!member) return errRes('Forbidden', 403);
+    if (!member) {
+      console.error('[chat-completion] membership check FAILED — user.id:', user.id, '| workspace_id:', workspace_id, '| db_error:', memberErr?.message ?? null);
+      return errRes('Forbidden', 403);
+    }
+    console.log('[chat-completion] membership OK');
 
     // ── Conversa — fonte de verdade para agent_id ─────────────────────────────
     // agent_id é derivado aqui, não aceito do body, evitando que o caller
@@ -145,28 +160,49 @@ Deno.serve(async (req) => {
     if (agentErr || !agent) return errRes('Agent not found', 404);
     if (!agent.model_id)    return errRes('Agent has no model configured', 400);
 
-    // ── Integração via workspace_settings.default_integration_id ─────────────
-    // A integração padrão do workspace é a fonte de API key para o chat.
+    // ── Integração — default ou fallback para a primeira ativa do workspace ─────
+    // Tenta resolver via workspace_settings.default_integration_id.
+    // Se não estiver definido (workspace recém-criado ou nunca configurado),
+    // usa a primeira integração ativa com encrypted_key do workspace.
     const { data: wSettings, error: wsErr } = await svc
       .from('workspace_settings')
       .select('default_integration_id')
       .eq('workspace_id', workspace_id)
       .maybeSingle();
 
-    if (wsErr || !wSettings?.default_integration_id) {
-      return errRes('No default integration configured. Set one in Integrations.', 422);
+    if (wsErr) {
+      console.error('[chat-completion] workspace_settings query error:', wsErr.message);
+      return errRes('Failed to load workspace settings', 500);
+    }
+
+    let integrationId: string | null = wSettings?.default_integration_id ?? null;
+
+    if (!integrationId) {
+      // default_integration_id não configurado: tenta a primeira integração ativa
+      const { data: fallback } = await svc
+        .from('ai_integrations')
+        .select('id')
+        .eq('workspace_id', workspace_id)
+        .is('deleted_at', null)
+        .limit(1)
+        .maybeSingle();
+      integrationId = fallback?.id ?? null;
+    }
+
+    if (!integrationId) {
+      return errRes('No integration configured. Add one in Integrations.', 422);
     }
 
     const { data: integration, error: intErr } = await svc
       .from('ai_integrations')
       .select('encrypted_key, ai_providers(base_url)')
-      .eq('id', wSettings.default_integration_id)
+      .eq('id', integrationId)
       .eq('workspace_id', workspace_id)
       .is('deleted_at', null)
       .maybeSingle();
 
     if (intErr || !integration) {
-      return errRes('Default integration not found or was removed', 422);
+      return errRes('Integration not found or was removed', 422);
     }
     if (!integration.encrypted_key) {
       return errRes('Default integration has no API key configured. Add one in Integrations.', 422);
