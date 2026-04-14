@@ -201,17 +201,12 @@ function agentRowHTML(agent) {
 function emptyStateHTML() {
   return `
     <div class="empty-state">
-      <div class="empty-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="8" r="4"/>
-          <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-          <circle cx="19" cy="9" r="2.5"/>
-          <path d="M21.5 14c1.5.5 2.5 1.7 2.5 3"/>
-        </svg>
+      <div class="chat-empty-icon">
+        <img src="assets/images/robot-idle.gif" alt="" />
       </div>
-      <div class="empty-title">Nenhum agente encontrado</div>
-      <div class="empty-desc">Crie seu primeiro agente de IA clicando em "Novo Agente"</div>
-    </div>
+      <div class="empty-title">Seu workspace está vazio</div>
+      <div class="empty-desc">Crie um agente!</div>
+</div>
   `;
 }
 
