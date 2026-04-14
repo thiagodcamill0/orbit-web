@@ -1378,7 +1378,11 @@ function bindPanel() {
         const system_prompt = document.getElementById('fieldPrompt')?.value || null;
         // Immediate save (bypasses debounce)
         db.from('agents').update({ name, model_id, system_prompt })
-          .eq('id', id).eq('workspace_id', OrbitSession.workspaceId).then(() => {});
+          .eq('id', id).eq('workspace_id', OrbitSession.workspaceId)
+          .then(({ error }) => {
+              if (error) toast('Erro ao salvar alterações', 'error');
+              else toast('Alterações salvas', 'success', 2000);
+          });
     });
     // Name sync → panel header
     const nameInput = document.getElementById('fieldName');
@@ -1389,11 +1393,19 @@ function bindPanel() {
         if (nodeLabel)
             nodeLabel.textContent = nameInput.value || 'agente';
     });
-    // Status chips
+    // Status chips — sync to node and persist
+    const currentStatus = panelTargetEl?.dataset?.agentStatus || 'active';
     document.querySelectorAll('.status-chip').forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.status === currentStatus);
         chip.addEventListener('click', () => {
             document.querySelectorAll('.status-chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
+            const status = chip.dataset.status;
+            if (panelTargetEl) {
+                panelTargetEl.dataset.agentStatus = status;
+                const dot = panelTargetEl.querySelector('.agent-status-dot');
+                if (dot) dot.dataset.status = status;
+            }
         });
     });
 }
@@ -1448,6 +1460,7 @@ function spawnAgentFromDB(agent) {
     el.dataset.systemPrompt = agent.system_prompt || '';
     el.dataset.pokemonId    = '1';
     el.dataset.apiSource    = 'gif';
+    el.dataset.agentStatus  = agent.status || 'active';
     el.innerHTML = `
       <div class="agent-actions">
         <button class="agent-action" data-action="name" title="Editar nome">
@@ -1474,7 +1487,10 @@ function spawnAgentFromDB(agent) {
       <img class="agent-node-pokemon" src="${gifUrl}" alt="" draggable="false"
            style="opacity:0;transition:opacity 0.3s ease"/>
       <div class="agent-node-shadow"></div>
-      <div class="agent-node-label">${escapeHTML(agent.name || 'agente')}</div>
+      <div class="agent-node-label">
+        <span class="agent-status-dot" data-status="${agent.status || 'active'}"></span>
+        ${escapeHTML(agent.name || 'agente')}
+      </div>
     `;
 
     // Reveal gif once loaded (instant from cache after first agent)

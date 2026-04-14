@@ -97,7 +97,24 @@
   position: relative;
   z-index: 2;
   transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
+
+/* ─── Status dot on node ─────────────────────── */
+
+.agent-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.agent-status-dot[data-status="active"]   { background: #4ade80; box-shadow: 0 0 5px rgba(74,222,128,0.6); }
+.agent-status-dot[data-status="idle"]     { background: #fbbf24; }
+.agent-status-dot[data-status="inactive"] { background: #f87171; box-shadow: 0 0 5px rgba(248,113,113,0.5); }
 
 .agent-node:hover .agent-node-label {
   color: rgba(255, 255, 255, 0.55);

@@ -130,7 +130,7 @@ function agentCardHTML(agent) {
   return `
     <div class="agent-card" data-id="${agent.id}">
       <div class="agent-card-top">
-        <div class="agent-icon ${cls}">${emoji}</div>
+        <div class="agent-icon ${cls}"><img src="assets/images/robot-idle.gif" alt="" /></div>
         <div class="agent-status status-${agent.status}">
           <span class="agent-status-dot"></span>
           ${statusLabel}
@@ -167,7 +167,7 @@ function agentRowHTML(agent) {
   const { emoji, cls } = agentIcon(agent.id);
   return `
     <div class="agent-row" data-id="${agent.id}">
-      <div class="agent-icon ${cls}">${emoji}</div>
+      <div class="agent-icon ${cls}"><img src="assets/images/robot-idle.gif" alt="" /></div>
       <div class="agent-row-info">
         <div class="agent-row-name">${escapeHTML(agent.name)}</div>
         <div class="agent-row-model">${escapeHTML(modelShort)}</div>

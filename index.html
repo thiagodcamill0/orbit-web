@@ -108,7 +108,6 @@
 
     </nav>
 
-
     <button class="sidebar-toggle-btn" aria-label="Toggle sidebar">
       <svg class="sidebar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
         <polyline points="15 18 9 12 15 6"/>
@@ -131,16 +130,24 @@
 
   <!-- ─── Main ──────────────────────────────────── -->
   <div class="main">
-
     <div class="content">
 
-      <div class="page-header">
-        <div>
-          <div class="page-title">Visão Geral</div>
-          <div class="page-desc">Gerencie e monitore seus agentes de IA</div>
+      <!-- ─── Dashboard Header ─────────────────── -->
+      <div class="dash-header">
+        <div class="dash-header-text">
+          <h1 class="dash-title">Visão Geral</h1>
+          <p class="dash-subtitle">Gerencie e monitore seus agentes de IA</p>
         </div>
+        <a class="topbar-btn topbar-btn-accent" href="agents.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Novo Agente
+        </a>
       </div>
 
+      <!-- ─── Stats Row ──────────────────────────── -->
       <div class="stats-row">
 
         <div class="stat-card">
@@ -156,13 +163,26 @@
           </div>
         </div>
 
-        <div class="stat-card">
+        <div class="stat-card stat-card--active">
           <span class="stat-label">Ativos</span>
           <div class="stat-body">
             <div class="stat-value" id="statActive">0</div>
-            <div class="stat-icon-block">
+            <div class="stat-icon-block stat-icon-block--active">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <span class="stat-label">Inativos</span>
+          <div class="stat-body">
+            <div class="stat-value" id="statInactive">0</div>
+            <div class="stat-icon-block">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <rect x="6" y="4" width="4" height="16" rx="1"/>
+                <rect x="14" y="4" width="4" height="16" rx="1"/>
               </svg>
             </div>
           </div>
@@ -182,48 +202,168 @@
           </div>
         </div>
 
-        <div class="stat-card">
-          <span class="stat-label">Inativos</span>
-          <div class="stat-body">
-            <div class="stat-value" id="statInactive">0</div>
-            <div class="stat-icon-block">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <rect x="6" y="4" width="4" height="16" rx="1"/>
-                <rect x="14" y="4" width="4" height="16" rx="1"/>
-              </svg>
+      </div>
+
+      <!-- ─── Dashboard Grid ────────────────────── -->
+      <div class="dash-grid">
+
+        <!-- ─── Agents Block ──────────────────── -->
+        <div class="dash-main">
+          <div class="dash-block">
+
+            <div class="dash-block-header">
+              <div class="dash-block-title-group">
+                <div class="section-title">Agentes</div>
+                <div class="dash-block-meta">
+                  <span id="agentCount" class="badge">0</span>
+                  <span class="dash-block-meta-label">no workspace</span>
+                </div>
+              </div>
+              <div class="dash-filter-bar">
+                <button class="filter-chip active" data-filter="all">Todos</button>
+                <button class="filter-chip" data-filter="active">Ativos</button>
+                <button class="filter-chip" data-filter="inactive">Inativos</button>
+                <button class="filter-chip" data-filter="idle">Em espera</button>
+                <div class="dash-filter-sep"></div>
+                <button class="topbar-btn topbar-btn-ghost" id="gridView" title="Grade">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                  </svg>
+                </button>
+                <button class="topbar-btn topbar-btn-ghost" id="listView" title="Lista">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+                    <line x1="8" y1="18" x2="21" y2="18"/>
+                    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+                    <line x1="3" y1="18" x2="3.01" y2="18"/>
+                  </svg>
+                </button>
+              </div>
             </div>
+
+            <div id="agentContainer" class="agent-grid"></div>
+
           </div>
         </div>
 
-      </div>
+        <!-- ─── Side Panels ───────────────────── -->
+        <div class="dash-side">
 
-      <!-- ─── Agent list ───────────────────────── -->
-      <div class="topbar" style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.06);padding-top:16px">
-        <div class="topbar-left" style="gap:6px">
-          <button class="filter-chip active" data-filter="all">Todos <span id="agentCount" class="badge">0</span></button>
-          <button class="filter-chip" data-filter="active">Ativos</button>
-          <button class="filter-chip" data-filter="inactive">Inativos</button>
-          <button class="filter-chip" data-filter="idle">Em espera</button>
-        </div>
-        <div class="topbar-right" style="gap:6px">
-          <button class="topbar-btn topbar-btn-ghost active" id="gridView" title="Grade">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-              <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-            </svg>
-          </button>
-          <button class="topbar-btn topbar-btn-ghost" id="listView" title="Lista">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
-              <line x1="8" y1="18" x2="21" y2="18"/>
-              <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
-              <line x1="3" y1="18" x2="3.01" y2="18"/>
-            </svg>
-          </button>
+          <!-- Quick Access -->
+          <div class="dash-block">
+            <div class="dash-block-header dash-block-header--simple">
+              <div class="section-title">Acesso Rápido</div>
+            </div>
+            <nav class="quick-links">
+              <a href="agents.html" class="quick-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="8" r="4"/>
+                  <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                  <circle cx="19" cy="9" r="2.5"/>
+                  <path d="M21.5 14c1.5.5 2.5 1.7 2.5 3"/>
+                </svg>
+                <span>Agentes</span>
+                <svg class="quick-link-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </a>
+              <a href="analytics.html" class="quick-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+                <span>Analytics</span>
+                <svg class="quick-link-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </a>
+              <a href="integrations.html" class="quick-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+                <span>Integrações</span>
+                <svg class="quick-link-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </a>
+              <a href="logs.html" class="quick-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                <span>Logs</span>
+                <svg class="quick-link-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </a>
+              <a href="results.html" class="quick-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <line x1="3" y1="9" x2="21" y2="9"/>
+                  <line x1="3" y1="15" x2="21" y2="15"/>
+                  <line x1="9" y1="3" x2="9" y2="21"/>
+                </svg>
+                <span>Results</span>
+                <svg class="quick-link-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </a>
+              <a href="security.html" class="quick-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                <span>Security</span>
+                <svg class="quick-link-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </a>
+            </nav>
+          </div>
+
+          <!-- System Status -->
+          <div class="dash-block">
+            <div class="dash-block-header dash-block-header--simple">
+              <div class="section-title">Sistema</div>
+              <span class="sys-badge">Online</span>
+            </div>
+            <div class="sys-status-list">
+              <div class="sys-status-item">
+                <div class="sys-status-label">
+                  <span class="sys-status-dot ok"></span>
+                  Banco de dados
+                </div>
+                <span class="sys-status-val">Conectado</span>
+              </div>
+              <div class="sys-status-item">
+                <div class="sys-status-label">
+                  <span class="sys-status-dot ok"></span>
+                  Autenticação
+                </div>
+                <span class="sys-status-val">Ativa</span>
+              </div>
+              <div class="sys-status-item">
+                <div class="sys-status-label">
+                  <span class="sys-status-dot ok"></span>
+                  API de modelos
+                </div>
+                <span class="sys-status-val">Operacional</span>
+              </div>
+              <div class="sys-status-item">
+                <div class="sys-status-label">
+                  <span class="sys-status-dot ok"></span>
+                  Sincronização
+                </div>
+                <span class="sys-status-val">Em tempo real</span>
+              </div>
+            </div>
+          </div>
+
+
         </div>
       </div>
-
-      <div id="agentContainer" class="agent-grid" style="margin-top:16px"></div>
 
     </div>
   </div>
