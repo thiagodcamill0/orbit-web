@@ -83,19 +83,21 @@ function renderStats() {
 function renderAgents() {
   const container = document.getElementById('agentContainer');
   if (!container) return;
+
+  stopScene();
+
   const filtered = filterAgents();
+
+  // Always render the cyberpunk scene as background
+  initScene(container, filtered);
+
+  // No agents: overlay the empty state on top of the scene
   if (filtered.length === 0) {
-    container.innerHTML = emptyStateHTML();
-    return;
+    const overlay = document.createElement('div');
+    overlay.className = 'scene-empty';
+    overlay.innerHTML = emptyStateHTML();
+    container.appendChild(overlay);
   }
-  if (state.view === 'grid') {
-    container.className = 'agent-grid';
-    container.innerHTML = filtered.map(agentCardHTML).join('');
-  } else {
-    container.className = 'agent-list';
-    container.innerHTML = filtered.map(agentRowHTML).join('');
-  }
-  bindAgentActions();
 }
 
 function filterAgents() {
@@ -269,6 +271,198 @@ function timeAgo(date) {
   if (mins < 60) return `${mins}m`;
   if (hours < 24) return `${hours}h`;
   return `${days}d`;
+}
+
+// ─── Agent Scene ──────────────────────────────────────────────────────────────
+
+let _sceneRaf = null;
+
+const SCENE = {
+  w:        64,    // robot element width  (px)
+  h:        64,    // robot element height (px)
+  labelH:   24,    // label height above robot (px)
+  spdMin:   0.10,  // min movement speed (px/frame)
+  spdMax:   0.28,  // max movement speed (px/frame)
+dirMin:   4000,  // min ms between direction changes
+  dirMax:   9500,  // max ms between direction changes
+};
+
+// ── Background image natural dimensions (cyber.png) ──────────────────────────
+const BG_W = 2555;
+const BG_H = 1536;
+
+// ── Walk zone in IMAGE-space coordinates (0–1 fraction of image dimensions) ──
+// The sidewalk band where agents are allowed to exist and move.
+// top/bottom are fractions of BG_H; left/right are fractions of BG_W.
+const WALK_ZONE = {
+  top:    0.74,   // upper edge of the walkable strip
+  bottom: 0.95,   // lower edge  (sprite bottom touches here = "ground")
+  left:   0.05,   // horizontal margin — agents won't hug the very edge
+  right:  0.95,
+};
+
+// Compute how CSS `background-size:cover; background-position:center bottom`
+// renders the background image inside the container.
+function _bgCoverBounds(cW, cH) {
+  const scale = Math.max(cW / BG_W, cH / BG_H);
+  const rW    = BG_W * scale;
+  const rH    = BG_H * scale;
+  const ox    = (cW - rW) / 2;  // negative when image is wider than container
+  const oy    = cH - rH;        // negative when image is taller (top is cropped)
+  return { ox, oy, rW, rH };
+}
+
+// Convert WALK_ZONE image-space fractions → absolute pixel bounds in the container.
+function _zonePx(cW, cH) {
+  const { ox, oy, rW, rH } = _bgCoverBounds(cW, cH);
+
+  const rawXMin = ox + WALK_ZONE.left   * rW;
+  const rawXMax = ox + WALK_ZONE.right  * rW;
+  const rawYMin = oy + WALK_ZONE.top    * rH;
+  const rawYMax = oy + WALK_ZONE.bottom * rH;
+
+  // Sprite occupies [x, x+w] × [y, y+h+labelH], so shift max by sprite size
+  const xMin = Math.max(0, rawXMin);
+  const xMax = Math.min(cW - SCENE.w, rawXMax - SCENE.w);
+  const yMin = Math.max(0, rawYMin);
+  const yMax = Math.min(cH - SCENE.h - SCENE.labelH, rawYMax - SCENE.h - SCENE.labelH);
+
+  return {
+    xMin,
+    xMax: Math.max(xMin, xMax),
+    yMin,
+    yMax: Math.max(yMin, yMax),
+  };
+}
+
+function stopScene() {
+  if (_sceneRaf !== null) {
+    cancelAnimationFrame(_sceneRaf);
+    _sceneRaf = null;
+  }
+  if (window._sceneResizeObserver) {
+    window._sceneResizeObserver.disconnect();
+    window._sceneResizeObserver = null;
+  }
+}
+
+function initScene(container, agents) {
+  container.className = 'agent-scene';
+  container.innerHTML = '';
+
+  const cW0   = container.clientWidth  || 800;
+  const cH0   = container.clientHeight || 440;
+  const zone0 = _zonePx(cW0, cH0);
+
+  // ── Build robot elements ───────────────────────────────
+  const robots = agents.map(agent => {
+    const wrap = document.createElement('div');
+    wrap.className = 'scene-robot';
+
+    const img = document.createElement('img');
+    img.src       = 'assets/images/robot-run.gif';
+    img.alt       = agent.name;
+    img.draggable = false;
+
+    const lbl = document.createElement('div');
+    lbl.className   = 'scene-robot-label';
+    lbl.textContent = agent.name;
+
+    wrap.appendChild(lbl);
+    wrap.appendChild(img);
+    container.appendChild(wrap);
+
+    // Agents enter from outside left or right edge, staggered
+    const fromLeft = Math.random() < 0.5;
+    const x  = fromLeft ? -SCENE.w : cW0 + SCENE.w;
+    const y  = zone0.yMin + Math.random() * Math.max(1, zone0.yMax - zone0.yMin);
+    const s  = SCENE.spdMin + Math.random() * (SCENE.spdMax - SCENE.spdMin);
+
+    const robot = {
+      wrap, img,
+      x, y,
+      baseY: y,
+      vx: fromLeft ? s : -s,   // always walk inward on entry
+      vy: (Math.random() * 0.03 + 0.01) * (Math.random() < 0.5 ? 1 : -1),
+      nextDir: Date.now() + SCENE.dirMin + Math.random() * (SCENE.dirMax - SCENE.dirMin),
+      frozen: false,
+      entering: true,           // skip bounce until inside the zone
+    };
+
+    wrap.style.cursor = 'pointer';
+    wrap.addEventListener('click', () => {
+      robot.frozen = !robot.frozen;
+      wrap.classList.toggle('frozen', robot.frozen);
+    });
+
+    return robot;
+  });
+
+  // ── Animation loop ─────────────────────────────────────
+  function tick() {
+    const now = Date.now();
+    const cW  = container.clientWidth;
+    const cH  = container.clientHeight;
+    const { xMin, xMax, yMin, yMax } = _zonePx(cW, cH);
+
+    for (let i = 0; i < robots.length; i++) {
+      const r = robots[i];
+
+      if (r.frozen) continue;
+
+      // Scheduled direction change
+      if (now >= r.nextDir) {
+        const s = SCENE.spdMin + Math.random() * (SCENE.spdMax - SCENE.spdMin);
+        r.vx      = Math.random() < 0.5 ? s : -s;
+        r.nextDir = now + SCENE.dirMin + Math.random() * (SCENE.dirMax - SCENE.dirMin);
+      }
+
+      // Speed clamp
+      if (Math.abs(r.vx) > SCENE.spdMax) r.vx = Math.sign(r.vx) * SCENE.spdMax;
+
+      // Move
+      r.x += r.vx;
+      r.y += r.vy;
+
+      // Once the agent crosses into the zone, stop the entry phase
+      if (r.entering && r.x >= xMin && r.x <= xMax) r.entering = false;
+
+      // Bounce against image-based zone walls (only after fully entered)
+      if (!r.entering) {
+        if (r.x < xMin) { r.x = xMin; r.vx =  Math.abs(r.vx); }
+        if (r.x > xMax) { r.x = xMax; r.vx = -Math.abs(r.vx); }
+      }
+
+      // Vertical micro-bob within ±5px of baseY, clamped to zone
+      const bMin = Math.max(yMin, r.baseY - 5);
+      const bMax = Math.min(yMax, r.baseY + 5);
+      if (r.y < bMin) { r.y = bMin; r.vy =  Math.abs(r.vy); }
+      if (r.y > bMax) { r.y = bMax; r.vy = -Math.abs(r.vy); }
+
+      r.wrap.style.transform = `translate(${r.x}px, ${r.y}px)`;
+      r.img.style.transform  = r.vx < -0.05 ? 'scaleX(-1)' : 'scaleX(1)';
+    }
+
+    _sceneRaf = requestAnimationFrame(tick);
+  }
+
+  _sceneRaf = requestAnimationFrame(tick);
+
+  // ── Snap agents back into the zone on every resize ───────────────────────
+  if (window._sceneResizeObserver) window._sceneResizeObserver.disconnect();
+  window._sceneResizeObserver = new ResizeObserver(() => {
+    const cW = container.clientWidth;
+    const cH = container.clientHeight;
+    if (!cW || !cH) return;
+    const { xMin, xMax, yMin, yMax } = _zonePx(cW, cH);
+    for (const r of robots) {
+      if (r.x < xMin) { r.x = xMin; r.vx =  Math.abs(r.vx); }
+      if (r.x > xMax) { r.x = xMax; r.vx = -Math.abs(r.vx); }
+      r.baseY = Math.max(yMin, Math.min(yMax, r.baseY));
+      r.y     = Math.max(yMin, Math.min(yMax, r.y));
+    }
+  });
+  window._sceneResizeObserver.observe(container);
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
