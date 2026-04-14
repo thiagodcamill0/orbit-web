@@ -279,18 +279,25 @@ img.sidebar-brand-name {
 .nav-item.active {
   background:
     radial-gradient(
-      ellipse 130% 180% at 118% 50%,
-      rgba(108, 65, 200, 0.18) 0%,
-      rgba(99, 102, 241, 0.08) 50%,
-      rgba(99, 102, 241, 0.03) 65%,
-      transparent 80%
+      ellipse 160% 180% at 120% 50%,
+      rgba(108, 65, 200, 0.16) 0%,
+      rgba(99, 102, 241, 0.07) 55%,
+      rgba(99, 102, 241, 0.02) 72%,
+      transparent 88%
     ),
     radial-gradient(
-      ellipse 80% 110% at 108% 50%,
-      rgba(118, 60, 210, 0.40) 0%,
-      rgba(108, 65, 200, 0.20) 30%,
-      rgba(99, 102, 241, 0.08) 55%,
-      transparent 75%
+      ellipse 110% 120% at 112% 50%,
+      rgba(118, 60, 210, 0.38) 0%,
+      rgba(108, 65, 200, 0.18) 32%,
+      rgba(99, 102, 241, 0.06) 58%,
+      rgba(99, 102, 241, 0.01) 75%,
+      transparent 90%
+    ),
+    linear-gradient(to right,
+      rgba(0, 0, 0, 0.38) 0%,
+      rgba(0, 0, 0, 0.16) 42%,
+      rgba(0, 0, 0, 0.04) 64%,
+      transparent 78%
     ),
     var(--accent-soft);
   color: var(--text-primary);
@@ -1598,10 +1605,7 @@ img.sidebar-brand-name {
 
 .scene-robot:hover .scene-robot-label {
   opacity: 1;
-  text-shadow:
-    0 0 10px rgba(130, 160, 255, 1),
-    0 0 24px rgba(90, 130, 255, 0.7),
-    0 1px 4px rgba(0, 0, 0, 1);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 1);
 }
 
 .scene-robot.frozen img {
@@ -1614,10 +1618,7 @@ img.sidebar-brand-name {
 
 .scene-robot.frozen .scene-robot-label {
   color: #a0d4ff;
-  text-shadow:
-    0 0 8px rgba(80, 180, 255, 1),
-    0 0 20px rgba(60, 150, 240, 0.6),
-    0 1px 4px rgba(0, 0, 0, 1);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 1);
 }
 
 /* ── Empty state overlay on the scene ── */
@@ -1651,10 +1652,7 @@ img.sidebar-brand-name {
   color: #ffffff;
   margin-bottom: -8px;
   font-family: inherit;
-  text-shadow:
-    0 0  8px rgba(90, 140, 255, 0.95),
-    0 0 18px rgba(60, 110, 240, 0.55),
-    0 1px 4px rgba(0, 0, 0, 1);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 1);
 }
 
 /* ─── 2K / Wide-screen adjustments ──────────────────────── */

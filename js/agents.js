@@ -534,8 +534,7 @@ function bindCreateModal() {
 }
 
 async function spawnAgent(name, model) {
-    const existingNodes = world.querySelectorAll('.agent-node');
-    const hx = NODE_HX + 160 * existingNodes.length;
+    const hx = NODE_HX + Math.floor((Math.random() - 0.5) * 800);
     const hy = NODE_HY;
 
     console.log('[agents] INSERT agent:', { workspace_id: OrbitSession.workspaceId, name, model_id: model, x: hx, y: hy });
