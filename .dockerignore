@@ -4,3 +4,10 @@ node_modules
 .env.local
 .DS_Store
 README.md
+
+supabase
+src
+*.ts
+tsconfig.json
+package.json
+package-lock.json
