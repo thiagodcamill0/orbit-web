@@ -1,0 +1,2 @@
+[functions.chat-completion]
+verify_jwt = false

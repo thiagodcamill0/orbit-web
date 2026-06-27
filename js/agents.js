@@ -66,7 +66,7 @@ document.addEventListener('orbitSessionReady', async () => {
         } else {
             console.warn('[agents] OrbitBoards não disponível — boards ignorados');
         }
-        await loadCanvasData();
+        await Promise.all([loadCanvasData(), loadConnectedModels()]);
         console.log('[agents] canvas data loaded');
         restoreViewport();
     } catch (err) {
@@ -177,7 +177,10 @@ function bindCanvas() {
     viewport.addEventListener('mousedown', (e) => {
         if (e.button !== 0 || node.dragging)
             return;
-        const onNode = node.el ? node.el.contains(e.target) : false;
+        // Use closest() so DB-loaded agent nodes (which don't use the legacy node.el)
+        // are detected correctly. Without this, node.el is null → onNode is always false
+        // → canvas panning hijacks every click on agent action buttons.
+        const onNode = !!e.target.closest('.agent-node');
         // Click on empty canvas → exit edit mode
         if (editMode && !onNode) {
             exitEditMode();
@@ -310,7 +313,7 @@ function handleAction(action) {
             setTimeout(() => document.getElementById('fieldPrompt')?.focus(), 320);
             break;
         case 'delete':
-            deleteAgent(node.el);
+            deleteAgentById(node.el?.dataset?.agentId);
             break;
         case 'subagent':
             spawnSubagent(node.el.dataset.agentId);
@@ -457,7 +460,7 @@ async function spawnSubagent(parentId) {
     const { data, error } = await db.from('agents').insert({
         workspace_id:    OrbitSession.workspaceId,
         name:            'subagente',
-        model_id:        'openai/gpt-4o-mini',
+        model_id:        connectedProviderModels[0]?.value ?? null,
         parent_agent_id: parentId,
         x:               Math.round(pos.x),
         y:               Math.round(pos.y),
@@ -509,7 +512,7 @@ function bindCreateModal() {
 
     confirmBtn.addEventListener('click', async () => {
         const name  = nameInput.value.trim() || 'agente';
-        const model = document.getElementById('createModel').value;
+        const model = document.getElementById('createModel').dataset.value;
 
         if (!OrbitSession?.workspaceId) {
             console.error('[agents] OrbitSession não está pronta — workspace_id ausente');
@@ -531,8 +534,7 @@ function bindCreateModal() {
 }
 
 async function spawnAgent(name, model) {
-    const existingNodes = world.querySelectorAll('.agent-node');
-    const hx = NODE_HX + 160 * existingNodes.length;
+    const hx = NODE_HX + Math.floor((Math.random() - 0.5) * 800);
     const hy = NODE_HY;
 
     console.log('[agents] INSERT agent:', { workspace_id: OrbitSession.workspaceId, name, model_id: model, x: hx, y: hy });
@@ -621,11 +623,15 @@ function bindExtraNode(el, initX, initY, agentId) {
         }
     });
 
-    // Action buttons — open panel synced to this node
+    // Action buttons — open panel for most actions; delete uses deleteAgentById
     el.querySelectorAll('.agent-action').forEach(btn => {
         btn.addEventListener('click', e => {
             e.stopPropagation();
-            openPanelForNode(el, btn.dataset.action);
+            if (btn.dataset.action === 'delete') {
+                deleteAgentById(el.dataset.agentId);
+            } else {
+                openPanelForNode(el, btn.dataset.action);
+            }
         });
     });
 
@@ -637,7 +643,6 @@ function openPanelForNode(el, action) {
     panelTargetEl = el;
     const panel      = document.getElementById('agentPanel');
     const nameInput  = document.getElementById('fieldName');
-    const modelSel   = document.getElementById('fieldModel');
     const apiSel     = document.getElementById('fieldApiSource');
     const panelName  = document.getElementById('panelAgentName');
     const miniSprite = document.getElementById('panelPokemonMini');
@@ -649,13 +654,16 @@ function openPanelForNode(el, action) {
 
     // Sync panel fields from this node's data
     const agentName  = el.dataset.agentName  || labelEl?.textContent || 'agente';
-    const agentModel = el.dataset.agentModel || 'openai/gpt-4o';
+    const agentModel = el.dataset.agentModel || connectedProviderModels[0]?.value || '';
     const nodeSource = el.dataset.apiSource  || currentApiSource;
     const pokemonId  = parseInt(el.dataset.pokemonId) || currentPokemonId;
 
     nameInput.value       = agentName;
     panelName.textContent = agentName;
-    modelSel.value        = agentModel;
+    populateModelSelect(agentModel, val => {
+        el.dataset.agentModel = val;
+        if (el.dataset.agentId) saveAgentFields(el.dataset.agentId, { model_id: val });
+    });
     if (apiSel) apiSel.value = nodeSource;
     pokemonInp.value      = String(pokemonId);
     miniSprite.src        = mainSprite.src;
@@ -689,11 +697,6 @@ function openPanelForNode(el, action) {
         if (el.dataset.agentId) saveAgentFields(el.dataset.agentId, { name });
     };
 
-    // Wire model changes back to dataset + DB
-    modelSel.onchange = () => {
-        el.dataset.agentModel = modelSel.value;
-        if (el.dataset.agentId) saveAgentFields(el.dataset.agentId, { model_id: modelSel.value });
-    };
 
     // Wire API source selector
     if (apiSel) {
@@ -784,6 +787,488 @@ let currentPokemonId = 1;
 let currentApiSource = 'gif'; // 'gif' | 'pokemon'
 let panelTargetEl = null; // which node the panel is currently editing
 
+// ─── Model catalog — keyed by ai_providers.slug ───────────────────────────────
+// Labels exibidos no agrupamento do dropdown
+const PROVIDER_LABELS = {
+    openrouter:  'OpenRouter',
+    openai:      'OpenAI',
+    anthropic:   'Anthropic',
+    google:      'Google',
+    groq:        'Groq',
+    deepseek:    'DeepSeek',
+    mistral:     'Mistral',
+    cohere:      'Cohere',
+    'meta-llama': 'Meta',
+    perplexity:  'Perplexity',
+};
+
+// Favicon URLs via Google's S2 service — used in the model picker
+const PROVIDER_ICONS = {
+    openrouter:  'https://www.google.com/s2/favicons?domain=openrouter.ai&sz=16',
+    openai:      'https://www.google.com/s2/favicons?domain=openai.com&sz=16',
+    anthropic:   'https://www.google.com/s2/favicons?domain=anthropic.com&sz=16',
+    google:      'https://www.google.com/s2/favicons?domain=google.com&sz=16',
+    groq:        'https://www.google.com/s2/favicons?domain=groq.com&sz=16',
+    deepseek:    'https://www.google.com/s2/favicons?domain=deepseek.com&sz=16',
+    mistral:     'https://www.google.com/s2/favicons?domain=mistral.ai&sz=16',
+    cohere:      'https://www.google.com/s2/favicons?domain=cohere.com&sz=16',
+    'meta-llama': null, // fallback letter "M"
+    perplexity:  'https://www.google.com/s2/favicons?domain=perplexity.ai&sz=16',
+};
+
+// Returns the favicon URL for a model object. For OpenRouter models, the
+// sub-provider is inferred from the model ID prefix (e.g. "openai/gpt-4o" → openai).
+function iconUrlForModel(m) {
+    const slug = m.providerSlug;
+    if (!slug) return null;
+    if (slug !== 'openrouter') return PROVIDER_ICONS[slug] ?? null;
+    const prefix = (m.value ?? '').split('/')[0];
+    return PROVIDER_ICONS[prefix] ?? PROVIDER_ICONS.openrouter;
+}
+
+// Creates a <span class="mpicker-icon-wrap"> containing either an <img> or a
+// letter fallback. `size` is applied as width/height in pixels.
+function makeIconEl(iconUrl, fallbackChar, size) {
+    const wrap = document.createElement('span');
+    wrap.className = 'mpicker-icon-wrap';
+    if (iconUrl) {
+        const img = document.createElement('img');
+        img.src    = iconUrl;
+        img.width  = size;
+        img.height = size;
+        img.alt    = '';
+        img.onerror = () => img.replaceWith(makeFallbackIcon(fallbackChar, size));
+        wrap.appendChild(img);
+    } else {
+        wrap.appendChild(makeFallbackIcon(fallbackChar, size));
+    }
+    return wrap;
+}
+
+function makeFallbackIcon(char, size) {
+    const span = document.createElement('span');
+    span.className = 'mpicker-icon-fallback';
+    span.style.width  = `${size}px`;
+    span.style.height = `${size}px`;
+    span.textContent  = (char ?? '?')[0].toUpperCase();
+    return span;
+}
+
+const PROVIDER_MODELS = {
+    openrouter: [
+        { value: 'openai/gpt-4o',                       label: 'GPT-4o' },
+        { value: 'openai/gpt-4o-mini',                  label: 'GPT-4o Mini' },
+        { value: 'anthropic/claude-sonnet-4-5',         label: 'Claude Sonnet 4.5' },
+        { value: 'anthropic/claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
+        { value: 'google/gemini-2.0-flash-001',         label: 'Gemini 2.0 Flash' },
+        { value: 'meta-llama/llama-3.1-70b-instruct',   label: 'Llama 3.1 70B' },
+        { value: 'deepseek/deepseek-r1',                label: 'DeepSeek R1' },
+    ],
+    openai: [
+        { value: 'gpt-4o',      label: 'GPT-4o' },
+        { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+        { value: 'o1',          label: 'o1' },
+        { value: 'o1-mini',     label: 'o1 mini' },
+    ],
+    anthropic: [
+        { value: 'claude-opus-4-5-20251101',     label: 'Claude Opus 4.5' },
+        { value: 'claude-sonnet-4-5',            label: 'Claude Sonnet 4.5' },
+        { value: 'claude-haiku-4-5-20251001',    label: 'Claude 3.5 Haiku' },
+    ],
+    google: [
+        { value: 'gemini-2.0-flash-001', label: 'Gemini 2.0 Flash' },
+        { value: 'gemini-1.5-pro',       label: 'Gemini 1.5 Pro' },
+    ],
+    groq: [
+        { value: 'llama-3.1-70b-versatile', label: 'Llama 3.1 70B (Groq)' },
+        { value: 'mixtral-8x7b-32768',      label: 'Mixtral 8x7B (Groq)' },
+    ],
+};
+
+// Models available based on integrations configured for this workspace.
+// Populated by loadConnectedModels() at startup.
+let connectedProviderModels = [];
+
+async function loadConnectedModels() {
+    // Usa a view segura ai_integrations_safe — nunca expõe encrypted_key ao cliente.
+    // has_key (coluna computada) é filtrado em JS para evitar comportamento
+    // imprevisível do PostgREST com computed columns em views (seguro e portátil).
+    const { data: rawInts, error: intsErr } = await db
+        .from('ai_integrations_safe')
+        .select('provider_id, has_key')
+        .eq('workspace_id', OrbitSession.workspaceId);
+
+    if (intsErr) {
+        console.error('[agents] loadConnectedModels integrations error:', intsErr.message);
+        connectedProviderModels = [];
+        syncCreateModelSelect();
+        return;
+    }
+
+    // Filtra em JS: só integrações com chave API configurada
+    const ints = (rawInts ?? []).filter(i => i.has_key === true);
+
+    if (ints.length === 0) {
+        console.warn('[agents] loadConnectedModels: nenhuma integração com chave configurada');
+        connectedProviderModels = [];
+        syncCreateModelSelect();
+        return;
+    }
+
+    const providerIds = [...new Set(ints.map(i => i.provider_id))];
+    const { data: providers, error: provErr } = await db
+        .from('ai_providers')
+        .select('id, slug')
+        .in('id', providerIds);
+
+    if (provErr) {
+        console.error('[agents] loadConnectedModels providers error:', provErr.message);
+        connectedProviderModels = [];
+        syncCreateModelSelect();
+        return;
+    }
+
+    const slugs = (providers ?? []).map(p => p.slug);
+    console.log('[agents] loadConnectedModels slugs conectados:', slugs);
+
+    const seen   = new Set();
+    const models = [];
+    for (const slug of slugs) {
+        // OpenRouter: busca lista real da API pública (sem auth)
+        const slugModels = slug === 'openrouter'
+            ? await fetchOpenRouterModels()
+            : (PROVIDER_MODELS[slug] ?? []).map(m => ({ value: m.value, label: m.label, providerSlug: slug }));
+
+        for (const m of slugModels) {
+            if (!seen.has(m.value)) {
+                seen.add(m.value);
+                models.push(m);
+            }
+        }
+    }
+    connectedProviderModels = models;
+    console.log('[agents] loadConnectedModels modelos carregados:', models.length, 'de', slugs.length, 'provider(s)');
+
+    // Popula o dropdown do modal de criação agora que os modelos são conhecidos.
+    syncCreateModelSelect();
+}
+
+// Busca todos os modelos de texto disponíveis no OpenRouter via API pública (sem auth necessária).
+// Filtra apenas modelos texto→texto e multimodal→texto.
+// Em caso de falha, usa o catálogo local como fallback.
+async function fetchOpenRouterModels() {
+    try {
+        const res = await fetch('https://openrouter.ai/api/v1/models');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { data } = await res.json();
+
+        const chatModels = (data ?? []).filter(m => {
+            const mod = m.architecture?.modality ?? '';
+            // Mantém apenas modelos que aceitam texto e retornam texto
+            // Exclui: text->image (geração de imagem), audio->text, etc.
+            return !mod || mod === 'text->text' || mod === 'text+image->text';
+        });
+
+        console.log('[agents] OpenRouter modelos de texto disponíveis:', chatModels.length);
+
+        return chatModels.map(m => ({
+            value:        m.id,
+            label:        m.name ?? m.id,
+            providerSlug: 'openrouter',
+        }));
+    } catch (err) {
+        console.warn('[agents] fetchOpenRouterModels falhou, usando catálogo local:', err.message);
+        // Fallback para o catálogo local se a API do OpenRouter estiver indisponível
+        return PROVIDER_MODELS.openrouter.map(m => ({ ...m, providerSlug: 'openrouter' }));
+    }
+}
+
+// ─── Custom model picker ─────────────────────────────────────────────────────
+// Builds a premium popover picker inside `container` (a .model-picker div).
+// `models`       — array of { value, label, providerSlug? } — apenas providers conectados
+// `currentValue` — pre-selected value (may not be in `models` if it's a stale/legacy model)
+// `onChange`     — called with the new value when the user selects an option
+function buildModelPicker(id, models, currentValue, onChange) {
+    const container = document.getElementById(id);
+    if (!container) return;
+
+    const triggerOld = container.querySelector('.mpicker-trigger');
+    const menu       = container.querySelector('.mpicker-menu');
+    const isEmpty    = models.length === 0;
+    const modelMap   = new Map(models.map(m => [m.value, m]));
+    const labelFor   = v => modelMap.get(v)?.label ?? v;
+
+    // ── Build menu ────────────────────────────────────────────────────────────
+    menu.innerHTML = '';
+
+    if (isEmpty) {
+        const empty = document.createElement('div');
+        empty.className = 'mpicker-empty';
+        empty.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <span>Conecte uma API em <a href="integrations.html">Integrações</a><br>para habilitar os modelos.</span>
+        `;
+        menu.appendChild(empty);
+    } else {
+        // Search bar
+        const searchWrap = document.createElement('div');
+        searchWrap.className = 'mpicker-search-wrap';
+        searchWrap.innerHTML = `
+            <svg class="mpicker-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input class="mpicker-search-input" type="text"
+                   placeholder="Buscar modelo ou provider…"
+                   autocomplete="off" spellcheck="false" />
+        `;
+        menu.appendChild(searchWrap);
+
+        // Scrollable list
+        const list = document.createElement('div');
+        list.className = 'mpicker-list';
+        menu.appendChild(list);
+
+        // Group by provider
+        const groupOrder = [];
+        const groupMap   = {};
+        for (const m of models) {
+            const key = m.providerSlug ?? '_';
+            if (!groupMap[key]) { groupMap[key] = []; groupOrder.push(key); }
+            groupMap[key].push(m);
+        }
+        const hasMultipleProviders = groupOrder.length > 1;
+
+        // Legacy model (saved but no longer available)
+        if (currentValue && !modelMap.has(currentValue)) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'mpicker-option mpicker-legacy';
+            btn.dataset.value = currentValue;
+            btn.title = 'Este modelo pertence a uma integração que não está mais conectada.';
+            const info = document.createElement('span');
+            info.className = 'mpicker-opt-info';
+            const name = document.createElement('span');
+            name.className = 'mpicker-opt-name';
+            name.textContent = currentValue;
+            const prov = document.createElement('span');
+            prov.className = 'mpicker-opt-provider';
+            prov.textContent = 'indisponível';
+            info.append(name, prov);
+            btn.appendChild(info);
+            list.appendChild(btn);
+        }
+
+        // Render groups + options
+        for (const key of groupOrder) {
+            if (hasMultipleProviders) {
+                const grp = document.createElement('div');
+                grp.className = 'mpicker-group';
+                const fallbackChar = (PROVIDER_LABELS[key] ?? key)[0];
+                grp.appendChild(makeIconEl(PROVIDER_ICONS[key] ?? null, fallbackChar, 12));
+                const grpText = document.createElement('span');
+                grpText.textContent = PROVIDER_LABELS[key] ?? key;
+                grp.appendChild(grpText);
+                list.appendChild(grp);
+            }
+
+            for (const m of groupMap[key]) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'mpicker-option';
+                btn.dataset.value = m.value;
+
+                // Icon
+                const iconEl = makeIconEl(iconUrlForModel(m),
+                    (PROVIDER_LABELS[m.providerSlug] ?? m.providerSlug ?? '?')[0], 16);
+                iconEl.classList.add('mpicker-opt-icon');
+
+                // Info
+                const info = document.createElement('span');
+                info.className = 'mpicker-opt-info';
+                const name = document.createElement('span');
+                name.className = 'mpicker-opt-name';
+                name.textContent = m.label;
+                info.appendChild(name);
+
+                // Provider sub-label
+                let provLabel = PROVIDER_LABELS[m.providerSlug] ?? null;
+                if (m.providerSlug === 'openrouter') {
+                    const prefix = (m.value ?? '').split('/')[0];
+                    const sub = PROVIDER_LABELS[prefix] ?? null;
+                    provLabel = sub ? `${sub} via OpenRouter` : 'OpenRouter';
+                }
+                if (provLabel && !hasMultipleProviders) {
+                    const prov = document.createElement('span');
+                    prov.className = 'mpicker-opt-provider';
+                    prov.textContent = provLabel;
+                    info.appendChild(prov);
+                } else if (m.providerSlug === 'openrouter') {
+                    const prefix = (m.value ?? '').split('/')[0];
+                    const sub = PROVIDER_LABELS[prefix] ?? null;
+                    if (sub) {
+                        const prov = document.createElement('span');
+                        prov.className = 'mpicker-opt-provider';
+                        prov.textContent = sub;
+                        info.appendChild(prov);
+                    }
+                }
+
+                btn.append(iconEl, info);
+                list.appendChild(btn);
+            }
+        }
+
+        // Search filter function
+        function filterOptions(query) {
+            const q = query.toLowerCase().trim();
+            let visibleCount = 0;
+            list.querySelectorAll('.mpicker-option').forEach(el => {
+                const nm = (el.querySelector('.mpicker-opt-name')?.textContent ?? '').toLowerCase();
+                const pv = (el.querySelector('.mpicker-opt-provider')?.textContent ?? '').toLowerCase();
+                const vl = (el.dataset.value ?? '').toLowerCase();
+                const show = !q || nm.includes(q) || pv.includes(q) || vl.includes(q);
+                el.style.display = show ? '' : 'none';
+                if (show) visibleCount++;
+            });
+            // Hide empty group headers
+            if (hasMultipleProviders) {
+                list.querySelectorAll('.mpicker-group').forEach(grp => {
+                    let sib = grp.nextElementSibling;
+                    let anyVisible = false;
+                    while (sib && !sib.classList.contains('mpicker-group')) {
+                        if (sib.style.display !== 'none') { anyVisible = true; break; }
+                        sib = sib.nextElementSibling;
+                    }
+                    grp.style.display = anyVisible ? '' : 'none';
+                });
+            }
+            // No-results message
+            let noRes = list.querySelector('.mpicker-no-results');
+            if (visibleCount === 0 && q) {
+                if (!noRes) {
+                    noRes = document.createElement('div');
+                    noRes.className = 'mpicker-no-results';
+                    noRes.textContent = 'Nenhum modelo encontrado.';
+                    list.appendChild(noRes);
+                }
+            } else {
+                noRes?.remove();
+            }
+        }
+
+        const searchInput = searchWrap.querySelector('.mpicker-search-input');
+        searchInput.addEventListener('input', e => filterOptions(e.target.value));
+        searchInput.addEventListener('keydown', e => { if (e.key === 'Escape') closePicker(); });
+    }
+
+    // ── Clone trigger to clear old listeners ─────────────────────────────────
+    const freshTrigger = triggerOld.cloneNode(true);
+    triggerOld.replaceWith(freshTrigger);
+    const trigLabel = freshTrigger.querySelector('.mpicker-label');
+
+    // ── Value management ─────────────────────────────────────────────────────
+    function renderTriggerIcon(v) {
+        freshTrigger.querySelector('.mpicker-icon-wrap')?.remove();
+        if (!v) return;
+        const m = modelMap.get(v);
+        if (!m) return;
+        const fallback = (PROVIDER_LABELS[m.providerSlug] ?? m.providerSlug ?? '?')[0];
+        freshTrigger.insertBefore(makeIconEl(iconUrlForModel(m), fallback, 14), freshTrigger.firstChild);
+    }
+
+    function setValue(v) {
+        container.dataset.value = v;
+        trigLabel.textContent = v ? labelFor(v) : '—';
+        menu.querySelectorAll('.mpicker-option').forEach(btn =>
+            btn.classList.toggle('active', btn.dataset.value === v));
+        renderTriggerIcon(v);
+    }
+
+    function closePicker() {
+        container.classList.remove('open');
+        freshTrigger.setAttribute('aria-expanded', 'false');
+    }
+
+    function openPicker() {
+        document.querySelectorAll('.model-picker.open').forEach(p => {
+            if (p !== container) {
+                p.classList.remove('open');
+                p.querySelector('.mpicker-trigger')?.setAttribute('aria-expanded', 'false');
+            }
+        });
+        container.classList.add('open');
+        freshTrigger.setAttribute('aria-expanded', 'true');
+        // Reset + focus search
+        const searchEl = menu.querySelector('.mpicker-search-input');
+        if (searchEl) {
+            searchEl.value = '';
+            searchEl.dispatchEvent(new Event('input')); // reset filter
+            setTimeout(() => searchEl.focus(), 30);
+        }
+    }
+
+    // ── Set initial state ─────────────────────────────────────────────────────
+    freshTrigger.disabled = isEmpty;
+
+    if (isEmpty) {
+        trigLabel.textContent = 'Nenhuma API conectada';
+        container.dataset.value = '';
+    } else {
+        const initial = modelMap.has(currentValue) ? currentValue : models[0].value;
+        setValue(initial);
+
+        // Option click listeners
+        menu.querySelectorAll('.mpicker-option').forEach(btn => {
+            btn.addEventListener('click', () => {
+                setValue(btn.dataset.value);
+                onChange?.(btn.dataset.value);
+                closePicker();
+            });
+        });
+
+        freshTrigger.addEventListener('click', () => {
+            container.classList.contains('open') ? closePicker() : openPicker();
+        });
+        freshTrigger.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closePicker();
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault();
+                container.classList.contains('open') ? closePicker() : openPicker(); }
+        });
+    }
+}
+
+// Close any open picker when clicking outside — registered once at script load
+document.addEventListener('mousedown', e => {
+    if (!e.target.closest('.model-picker') && !e.target.closest('.mpicker-menu')) {
+        document.querySelectorAll('.model-picker.open').forEach(p => {
+            p.classList.remove('open');
+            p.querySelector('.mpicker-trigger')?.setAttribute('aria-expanded', 'false');
+        });
+    }
+});
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.model-picker.open').forEach(p => {
+            p.classList.remove('open');
+            p.querySelector('.mpicker-trigger')?.setAttribute('aria-expanded', 'false');
+        });
+    }
+});
+
+// Populates #createModel (create-agent modal) from connectedProviderModels.
+function syncCreateModelSelect() {
+    buildModelPicker('createModel', connectedProviderModels, connectedProviderModels[0]?.value ?? '', null);
+}
+
+// Populates #fieldModel (agent-panel) with models from connectedProviderModels.
+// Called every time the panel opens with the agent's current model + change callback.
+function populateModelSelect(currentModel, onChange) {
+    buildModelPicker('fieldModel', connectedProviderModels, currentModel, onChange);
+}
+
 function updateSpriteIdLabel(labelEl, source) {
     if (!labelEl) return;
     const field = labelEl.closest('.panel-field');
@@ -795,77 +1280,108 @@ function updateSpriteIdLabel(labelEl, source) {
     }
 }
 
-async function deleteAgent(el) {
-    if (!el) return;
-    const agentId = el.dataset.agentId;
-    const panel   = document.getElementById('agentPanel');
-
-    // Soft-delete in DB (agentId is a UUID from DB)
-    if (agentId) {
-        await db.from('agents')
-            .update({ deleted_at: new Date().toISOString() })
-            .eq('id', agentId)
-            .eq('workspace_id', OrbitSession.workspaceId);
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info', duration = 3500) {
+    let container = document.getElementById('orbit-toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'orbit-toast-container';
+        container.style.cssText = 'position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:9999;pointer-events:none';
+        document.body.appendChild(container);
     }
+    const colors = { success: '#22c55e', error: '#ef4444', info: '#6366f1' };
+    const t = document.createElement('div');
+    t.style.cssText = `background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;padding:10px 16px;border-radius:8px;font-size:13px;min-width:220px;box-shadow:0 4px 24px rgba(0,0,0,0.4);border-left:3px solid ${colors[type] ?? colors.info};pointer-events:all`;
+    t.textContent = msg;
+    container.appendChild(t);
+    const dismiss = () => {
+        t.style.cssText += ';opacity:0;transition:opacity 0.2s';
+        setTimeout(() => t.remove(), 220);
+    };
+    if (duration > 0) setTimeout(dismiss, duration);
+    return dismiss;
+}
 
-    panel.classList.remove('open');
-
-    if (agentId) {
-        const entry = registry.get(agentId);
-        if (entry) {
-            // Remove all connection lines involving this agent
-            const allConns = [...(entry.parentId ? [`conn-${entry.parentId}-${agentId}`] : []),
-                              ...entry.childIds.map(cid => `conn-${agentId}-${cid}`)];
-            allConns.forEach(id => document.getElementById(id)?.remove());
-
-            // Detach from parent's childIds
-            if (entry.parentId) {
-                const parent = registry.get(entry.parentId);
-                if (parent) parent.childIds = parent.childIds.filter(c => c !== agentId);
-            }
-
-            // Recursively remove children
-            function removeChildren(aid) {
-                const a = registry.get(aid);
-                if (!a) return;
-                a.childIds.forEach(cid => {
-                    document.getElementById(`conn-${aid}-${cid}`)?.remove();
-                    const childEl = registry.get(cid)?.el;
-                    if (childEl) childEl.remove();
-                    removeChildren(cid);
-                    registry.delete(cid);
-                });
-            }
-            removeChildren(agentId);
-            registry.delete(agentId);
-        }
-    }
-
-    el.remove();
+// ─── Panel close ──────────────────────────────────────────────────────────────
+function closePanel() {
+    document.getElementById('agentPanel')?.classList.remove('open');
     panelTargetEl = null;
 }
 
-function bindPanel() {
-    const panel = document.getElementById('agentPanel');
-    const closeBtn = document.getElementById('closePanelBtn');
-    // Close
-    closeBtn.addEventListener('click', () => panel.classList.remove('open'));
+// ─── Delete agent ─────────────────────────────────────────────────────────────
+// Single entry point for deletion — called by canvas action button AND panel footer.
+// Uses an RPC with SECURITY DEFINER to bypass REST/RLS issues with soft-delete.
+async function deleteAgentById(agentId) {
+    if (!agentId) return;
 
-    // Delete
-    document.getElementById('deleteAgentBtn')?.addEventListener('click', () => {
-        deleteAgent(panelTargetEl);
-    });
+    const { error } = await db.rpc('soft_delete_agent', { p_agent_id: agentId });
+
+    if (error) {
+        toast('Erro ao excluir agente: ' + error.message, 'error');
+        return;
+    }
+
+    // DB confirmed deletion — clean up UI
+    closePanel();
+
+    const entry = registry.get(agentId);
+    if (entry) {
+        // Remove connection lines touching this agent
+        const connIds = [
+            ...(entry.parentId ? [`conn-${entry.parentId}-${agentId}`] : []),
+            ...entry.childIds.map(cid => `conn-${agentId}-${cid}`),
+        ];
+        connIds.forEach(id => document.getElementById(id)?.remove());
+
+        // Detach from parent registry entry
+        if (entry.parentId) {
+            const parent = registry.get(entry.parentId);
+            if (parent) parent.childIds = parent.childIds.filter(c => c !== agentId);
+        }
+
+        // Recursively remove children from DOM + registry
+        function removeChildren(aid) {
+            const a = registry.get(aid);
+            if (!a) return;
+            a.childIds.forEach(cid => {
+                document.getElementById(`conn-${aid}-${cid}`)?.remove();
+                registry.get(cid)?.el?.remove();
+                removeChildren(cid);
+                registry.delete(cid);
+            });
+        }
+        removeChildren(agentId);
+
+        entry.el?.remove();
+        registry.delete(agentId);
+    }
+}
+
+function bindPanel() {
+    // Close
+    document.getElementById('closePanelBtn')
+        ?.addEventListener('click', closePanel);
+
+    // Delete — read agentId at click time so it's always current
+    document.getElementById('deleteAgentBtn')
+        ?.addEventListener('click', () => {
+            deleteAgentById(panelTargetEl?.dataset?.agentId);
+        });
 
     // Save button: flush any pending debounced saves immediately
     document.getElementById('saveAgentBtn')?.addEventListener('click', () => {
         if (!panelTargetEl || !panelTargetEl.dataset.agentId) return;
         const id = panelTargetEl.dataset.agentId;
         const name        = document.getElementById('fieldName')?.value.trim() || 'agente';
-        const model_id    = document.getElementById('fieldModel')?.value;
+        const model_id    = document.getElementById('fieldModel')?.dataset.value;
         const system_prompt = document.getElementById('fieldPrompt')?.value || null;
         // Immediate save (bypasses debounce)
         db.from('agents').update({ name, model_id, system_prompt })
-          .eq('id', id).eq('workspace_id', OrbitSession.workspaceId).then(() => {});
+          .eq('id', id).eq('workspace_id', OrbitSession.workspaceId)
+          .then(({ error }) => {
+              if (error) toast('Erro ao salvar alterações', 'error');
+              else toast('Alterações salvas', 'success', 2000);
+          });
     });
     // Name sync → panel header
     const nameInput = document.getElementById('fieldName');
@@ -876,11 +1392,19 @@ function bindPanel() {
         if (nodeLabel)
             nodeLabel.textContent = nameInput.value || 'agente';
     });
-    // Status chips
+    // Status chips — sync to node and persist
+    const currentStatus = panelTargetEl?.dataset?.agentStatus || 'active';
     document.querySelectorAll('.status-chip').forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.status === currentStatus);
         chip.addEventListener('click', () => {
             document.querySelectorAll('.status-chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
+            const status = chip.dataset.status;
+            if (panelTargetEl) {
+                panelTargetEl.dataset.agentStatus = status;
+                const dot = panelTargetEl.querySelector('.agent-status-dot');
+                if (dot) dot.dataset.status = status;
+            }
         });
     });
 }
@@ -935,6 +1459,7 @@ function spawnAgentFromDB(agent) {
     el.dataset.systemPrompt = agent.system_prompt || '';
     el.dataset.pokemonId    = '1';
     el.dataset.apiSource    = 'gif';
+    el.dataset.agentStatus  = agent.status || 'active';
     el.innerHTML = `
       <div class="agent-actions">
         <button class="agent-action" data-action="name" title="Editar nome">
@@ -961,7 +1486,10 @@ function spawnAgentFromDB(agent) {
       <img class="agent-node-pokemon" src="${gifUrl}" alt="" draggable="false"
            style="opacity:0;transition:opacity 0.3s ease"/>
       <div class="agent-node-shadow"></div>
-      <div class="agent-node-label">${escapeHTML(agent.name || 'agente')}</div>
+      <div class="agent-node-label">
+        <span class="agent-status-dot" data-status="${agent.status || 'active'}"></span>
+        ${escapeHTML(agent.name || 'agente')}
+      </div>
     `;
 
     // Reveal gif once loaded (instant from cache after first agent)

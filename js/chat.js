@@ -1,193 +1,297 @@
-// ─── Chat MVP ─────────────────────────────────────────────────────────────────
+// ─── chat.js ─────────────────────────────────────────────────────────────────
+// Etapa 5 — Conversations + Messages conectados ao Supabase.
+// Resposta do assistant via Edge Function chat-completion.
+// Frontend insere apenas role='user'; role='assistant' é inserido pelo backend.
+// ─────────────────────────────────────────────────────────────────────────────
 
-const AGENT_GIF = 'assets/images/robot-idle.gif';
+(function () {
 
-const MOCK_RESPONSES = [
-    'Entendido. Vou processar sua solicitação.',
-    'Analisando os dados disponíveis...',
-    'Posso ajudar com isso. Me dê mais detalhes.',
-    'Tarefa recebida. Iniciando execução.',
-    'Verificando com os subagentes antes de responder.',
-    'Solicitação processada com sucesso.',
-    'Preciso de mais contexto para continuar.',
-    'Pronto. O que mais posso fazer?',
-];
+  // ─── State ──────────────────────────────────────────────────────────────────
+  let workspaceId  = null;
+  let activeConvId = null;
+  let activeAgent  = null;
+  let sending      = false;
 
-const AGENTS = [
-    { id: 'a1', name: 'Agente Principal',  role: 'Orquestrador',      gif: AGENT_GIF },
-    { id: 'a2', name: 'Agente Analítico',  role: 'Análise de dados',   gif: AGENT_GIF },
-    { id: 'a3', name: 'Agente de Suporte', role: 'Atendimento',        gif: AGENT_GIF },
-];
+  // ─── DOM refs ───────────────────────────────────────────────────────────────
+  const listBody     = document.getElementById('chatListBody');
+  const emptyView    = document.getElementById('chatEmptyView');
+  const convView     = document.getElementById('chatConvView');
+  const headerAvatar = document.getElementById('chatHeaderAvatar');
+  const headerName   = document.getElementById('chatHeaderName');
+  const messagesEl   = document.getElementById('chatMessages');
+  const inputEl      = document.getElementById('chatInput');
+  const sendBtn      = document.getElementById('chatSendBtn');
 
-// ─── State ────────────────────────────────────────────────────────────────────
+  // ─── Init ───────────────────────────────────────────────────────────────────
+  document.addEventListener('orbitSessionReady', async () => {
+    workspaceId = OrbitSession.workspaceId;
+    bindInput();
+    await loadAgents();
+  });
 
-let activeAgent  = null;
-let activeItem   = null;
-let msgCount     = 0;
-let isTyping     = false;
+  // ─── Load agents from DB ────────────────────────────────────────────────────
+  async function loadAgents() {
+    const { data, error } = await db
+      .from('agents')
+      .select('id, name, model_id')
+      .eq('workspace_id', workspaceId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true });
 
-// ─── Elements ─────────────────────────────────────────────────────────────────
+    if (error) { console.error('chat: loadAgents error', error); return; }
 
-const listBody    = document.getElementById('chatListBody');
-const emptyView   = document.getElementById('chatEmptyView');
-const convView    = document.getElementById('chatConvView');
-const messagesEl  = document.getElementById('chatMessages');
-const inputEl     = document.getElementById('chatInput');
-const sendBtn     = document.getElementById('chatSendBtn');
-const headerName  = document.getElementById('chatHeaderName');
-const headerAvatar= document.getElementById('chatHeaderAvatar');
-
-// ─── List ─────────────────────────────────────────────────────────────────────
-
-function renderList() {
+    const agents = data ?? [];
     listBody.innerHTML = '';
-    AGENTS.forEach(agent => {
-        const item = document.createElement('div');
-        item.className = 'chat-item';
-        item.dataset.agentId = agent.id;
-        item.innerHTML = `
-            <div class="chat-item-avatar">
-                <img src="${agent.gif}" alt="" />
-            </div>
-            <div class="chat-item-body">
-                <div class="chat-item-name">${escapeHtml(agent.name)}</div>
-                <div class="chat-item-role">${escapeHtml(agent.role)}</div>
-            </div>
-        `;
-        item.addEventListener('click', () => openChat(agent, item));
-        listBody.appendChild(item);
-    });
-}
 
-// ─── Open chat ────────────────────────────────────────────────────────────────
-
-function openChat(agent, itemEl) {
-    // Active state na lista
-    if (activeItem) activeItem.classList.remove('active');
-    itemEl.classList.add('active');
-    activeItem = itemEl;
-
-    const isNew = !activeAgent || activeAgent.id !== agent.id;
-    activeAgent = agent;
-
-    if (isNew) {
-        msgCount  = 0;
-        isTyping  = false;
-        messagesEl.innerHTML = '';
-        inputEl.value        = '';
-        inputEl.style.height = 'auto';
-        sendBtn.disabled     = false;
+    if (agents.length === 0) {
+      listBody.innerHTML = '<div style="padding:20px 16px;font-size:12px;color:var(--text-muted)">Nenhum agente criado ainda.</div>';
+      return;
     }
 
+    agents.forEach(agent => {
+      listBody.appendChild(buildAgentItem(agent));
+    });
+  }
+
+  function buildAgentItem(agent) {
+    const el = document.createElement('div');
+    el.className = 'chat-item';
+    el.dataset.agentId = agent.id;
+    el.innerHTML =
+      '<div class="chat-item-avatar"><img src="assets/images/robot-idle.gif" alt="" /></div>' +
+      '<div class="chat-item-body">' +
+        '<span class="chat-item-name">' + escHtml(agent.name) + '</span>' +
+        '<span class="chat-item-role">' + escHtml(agent.model_id ?? '') + '</span>' +
+      '</div>';
+    el.addEventListener('click', () => openConversation(agent, el));
+    return el;
+  }
+
+  // ─── Open / create conversation ─────────────────────────────────────────────
+  async function openConversation(agent, itemEl) {
+    listBody.querySelectorAll('.chat-item').forEach(i => i.classList.remove('active'));
+    itemEl.classList.add('active');
+
+    activeAgent = agent;
+    headerAvatar.src = 'assets/images/robot-idle.gif';
     headerName.textContent = agent.name;
-    headerAvatar.src       = agent.gif;
 
     emptyView.classList.add('hidden');
     convView.classList.remove('hidden');
+    messagesEl.innerHTML = '';
 
-    inputEl.focus();
-}
+    const convId = await getOrCreateConversation(agent.id);
+    if (!convId) return;
 
-// ─── Messaging ────────────────────────────────────────────────────────────────
+    activeConvId = convId;
+    await loadMessages(convId);
+  }
 
-function now() {
-    return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
+  async function getOrCreateConversation(agentId) {
+    // Load most recent active conversation for this agent
+    const { data, error } = await db
+      .from('conversations')
+      .select('id, status')
+      .eq('workspace_id', workspaceId)
+      .eq('agent_id', agentId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-function scrollBottom() {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-}
+    if (error) { console.error('chat: getConversation error', error); return null; }
 
-function addMessage(text, sender) {
-    if (msgCount === 0) {
-        const sep = document.createElement('div');
-        sep.className = 'chat-date-sep';
-        sep.innerHTML = '<span>Hoje</span>';
-        messagesEl.appendChild(sep);
-    }
-    msgCount++;
+    // Reuse if active; create new if none or limit_reached
+    if (data && data.status === 'active') return data.id;
 
-    const row = document.createElement('div');
-    row.className = `msg ${sender}`;
-    row.innerHTML = `
-        <div class="msg-bubble">${escapeHtml(text)}</div>
-        <span class="msg-time">${now()}</span>
-    `;
-    messagesEl.appendChild(row);
-    scrollBottom();
-}
+    const { data: created, error: insertErr } = await db
+      .from('conversations')
+      .insert({ workspace_id: workspaceId, agent_id: agentId, status: 'active' })
+      .select('id')
+      .single();
 
-function showTyping() {
-    isTyping = true;
+    if (insertErr) { console.error('chat: createConversation error', insertErr); return null; }
+    return created.id;
+  }
+
+  // ─── Load messages ───────────────────────────────────────────────────────────
+  async function loadMessages(convId) {
+    const { data, error } = await db
+      .from('messages')
+      .select('id, role, content, created_at')
+      .eq('conversation_id', convId)
+      .order('created_at', { ascending: true });
+
+    if (error) { console.error('chat: loadMessages error', error); return; }
+
+    messagesEl.innerHTML = '';
+    let lastDateLabel = null;
+
+    (data ?? []).forEach(msg => {
+      const d = new Date(msg.created_at);
+      const label = d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+      if (label !== lastDateLabel) {
+        messagesEl.appendChild(buildDateSep(label));
+        lastDateLabel = label;
+      }
+      messagesEl.appendChild(buildBubble(msg.role, msg.content, d));
+    });
+
+    scrollToBottom();
+  }
+
+  // ─── Send message ────────────────────────────────────────────────────────────
+  function bindInput() {
+    sendBtn.addEventListener('click', handleSend);
+
+    inputEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    });
+
+    inputEl.addEventListener('input', () => {
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+    });
+  }
+
+  async function handleSend() {
+    if (sending || !activeConvId) return;
+    const content = inputEl.value.trim();
+    if (!content) return;
+
+    sending = true;
     sendBtn.disabled = true;
-    const el = document.createElement('div');
-    el.className = 'msg agent';
-    el.id = 'typingRow';
-    el.innerHTML = `
-        <div class="typing-indicator">
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-        </div>
-    `;
-    messagesEl.appendChild(el);
-    scrollBottom();
-}
-
-function hideTyping() {
-    const el = document.getElementById('typingRow');
-    if (el) el.remove();
-    isTyping = false;
-    sendBtn.disabled = false;
-    inputEl.focus();
-}
-
-function agentReply() {
-    const delay = 900 + Math.random() * 800;
-    showTyping();
-    setTimeout(() => {
-        hideTyping();
-        const text = MOCK_RESPONSES[Math.floor(Math.random() * MOCK_RESPONSES.length)];
-        addMessage(text, 'agent');
-    }, delay);
-}
-
-function send() {
-    const text = inputEl.value.trim();
-    if (!text || isTyping) return;
     inputEl.value = '';
     inputEl.style.height = 'auto';
-    addMessage(text, 'user');
-    agentReply();
-}
 
-// ─── Events ───────────────────────────────────────────────────────────────────
+    // Render user bubble immediately (optimistic)
+    messagesEl.appendChild(buildBubble('user', content, new Date()));
+    scrollToBottom();
 
-sendBtn.addEventListener('click', send);
+    // Persist user message
+    const { error } = await db.from('messages').insert({
+      conversation_id: activeConvId,
+      workspace_id:    workspaceId,
+      role:            'user',
+      content,
+    });
 
-inputEl.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        send();
+    if (error) {
+      console.error('chat: sendMessage error', error);
+      sending = false;
+      sendBtn.disabled = false;
+      return;
     }
-});
 
-inputEl.addEventListener('input', () => {
-    inputEl.style.height = 'auto';
-    inputEl.style.height = `${Math.min(inputEl.scrollHeight, 120)}px`;
-});
+    // Assistant response via Edge Function
+    await callAssistantEdgeFunction(activeConvId, activeAgent.id);
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
+    sending = false;
+    sendBtn.disabled = false;
+  }
 
-document.addEventListener('DOMContentLoaded', renderList);
+  // ─── Edge Function call ──────────────────────────────────────────────────────
+  // POST para chat-completion passando JWT do usuário.
+  // A Edge Function lê a integração, chama o LLM, persiste role='assistant'
+  // e retorna { content } para render.
+  async function callAssistantEdgeFunction(convId, agentId) {
+    if (!convId || !agentId || !workspaceId) {
+      throw new Error('Missing required data to call chat-completion');
+    }
 
-// ─── Util ─────────────────────────────────────────────────────────────────────
+    const typing = buildTypingIndicator();
+    messagesEl.appendChild(typing);
+    scrollToBottom();
 
-function escapeHtml(str) {
+    let reply = null;
+
+    try {
+      const { data: { session } } = await db.auth.getSession();
+      if (!session) throw new Error('No active session');
+
+      const fnUrl = ORBIT_CONFIG.functions.url + '/chat-completion';
+
+      const res = await fetch(fnUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': 'Bearer ' + session.access_token,
+          'apikey':        ORBIT_CONFIG.supabase.anonKey,
+        },
+        body: JSON.stringify({
+          conversation_id: convId,
+          agent_id:        agentId,
+          workspace_id:    workspaceId,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json.error || 'Edge Function error ' + res.status);
+      }
+
+      reply = json.content;
+    } catch (err) {
+      console.error('chat: callAssistantEdgeFunction error', err);
+      reply = '[Erro ao obter resposta do agente: ' + err.message + ']';
+    }
+
+    typing.remove();
+
+    if (reply) {
+      messagesEl.appendChild(buildBubble('assistant', reply, new Date()));
+      scrollToBottom();
+    }
+  }
+
+  // ─── DOM builders ────────────────────────────────────────────────────────────
+  function buildBubble(role, content, date) {
+    const cssRole = role === 'user' ? 'user' : 'agent';
+    const timeStr = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const div = document.createElement('div');
+    div.className = 'msg ' + cssRole;
+    div.innerHTML =
+      '<div class="msg-bubble">' + escHtml(content) + '</div>' +
+      '<span class="msg-time">' + timeStr + '</span>';
+    return div;
+  }
+
+  function buildDateSep(label) {
+    const div = document.createElement('div');
+    div.className = 'chat-date-sep';
+    div.innerHTML = '<span>' + label + '</span>';
+    return div;
+  }
+
+  function buildTypingIndicator() {
+    const div = document.createElement('div');
+    div.className = 'msg agent';
+    div.innerHTML =
+      '<div class="typing-indicator">' +
+        '<span class="typing-dot"></span>' +
+        '<span class="typing-dot"></span>' +
+        '<span class="typing-dot"></span>' +
+      '</div>';
+    return div;
+  }
+
+  // ─── Utilities ───────────────────────────────────────────────────────────────
+  function scrollToBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function escHtml(str) {
     return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/\n/g, '<br>');
-}
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+
+
+})();

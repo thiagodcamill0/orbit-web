@@ -94,8 +94,9 @@ function _fillSidebarUser(profile) {
   if (nameEl)   nameEl.textContent = profile.display_name ?? 'Usuário';
   if (roleEl)   roleEl.textContent = 'Administrador';
 
-  if (avatarEl && profile.avatar_url) {
-    avatarEl.innerHTML = `<img src="${profile.avatar_url}" alt="Avatar" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />`;
+  const avatarSrc = profile.avatar_url || localStorage.getItem('profile-avatar');
+  if (avatarEl && avatarSrc) {
+    avatarEl.innerHTML = `<img src="${avatarSrc}" alt="Avatar" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />`;
   }
-  // Se não tem avatar_url, mantém o SVG padrão que já existe no HTML.
+  // Se não tem avatar, mantém o SVG padrão que já existe no HTML.
 }

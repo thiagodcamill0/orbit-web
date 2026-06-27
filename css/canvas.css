@@ -97,7 +97,24 @@
   position: relative;
   z-index: 2;
   transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
+
+/* ─── Status dot on node ─────────────────────── */
+
+.agent-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.agent-status-dot[data-status="active"]   { background: #4ade80; box-shadow: 0 0 5px rgba(74,222,128,0.6); }
+.agent-status-dot[data-status="idle"]     { background: #fbbf24; }
+.agent-status-dot[data-status="inactive"] { background: #f87171; box-shadow: 0 0 5px rgba(248,113,113,0.5); }
 
 .agent-node:hover .agent-node-label {
   color: rgba(255, 255, 255, 0.55);
@@ -136,6 +153,14 @@
 .agent-action svg { width: 16px; height: 16px; }
 
 .agent-action:hover { color: rgba(255, 255, 255, 0.85); }
+
+/* ─── Hover: actions appear at reduced opacity ── */
+
+.agent-node:hover .agent-action {
+  opacity: 0.5;
+  transform: translateX(0);
+  pointer-events: all;
+}
 
 /* ─── Edit mode: actions slide in L→R ───────── */
 
@@ -472,7 +497,7 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   width: 380px;
-  overflow: hidden;
+  overflow: visible;
   transform: translateY(8px) scale(0.98);
   transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }

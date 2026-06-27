@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="assets/images/browser.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Orbit — Agentes</title>
   <link rel="stylesheet" href="css/global.css" />
@@ -15,7 +16,7 @@
   <aside class="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-brand">
-        <span class="sidebar-brand-name">Orbit</span>
+        <img src="assets/images/logo.png" alt="Orbit" class="sidebar-brand-name" />
       </div>
     </div>
     <nav class="sidebar-nav">
@@ -236,16 +237,14 @@
         <div class="panel-section">
           <div class="panel-section-label">Modelo</div>
           <div class="panel-field">
-            <label class="panel-label">Provedor</label>
-            <select class="panel-select" id="fieldModel">
-              <option value="openai/gpt-4o">GPT-4o</option>
-              <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-              <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-              <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
-              <option value="google/gemini-pro-1.5">Gemini Pro 1.5</option>
-              <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B</option>
-              <option value="deepseek/deepseek-r1">DeepSeek R1</option>
-            </select>
+            <label class="panel-label">Modelo</label>
+            <div class="model-picker" id="fieldModel" data-value="">
+              <button type="button" class="mpicker-trigger" aria-haspopup="listbox" aria-expanded="false">
+                <span class="mpicker-label">—</span>
+                <svg class="mpicker-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="mpicker-menu" role="listbox"></div>
+            </div>
           </div>
         </div>
 
@@ -305,15 +304,13 @@
       </div>
       <div class="create-field">
         <label class="create-label">Modelo</label>
-        <select class="create-select" id="createModel">
-          <option value="openai/gpt-4o">GPT-4o</option>
-          <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-          <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-          <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
-          <option value="google/gemini-pro-1.5">Gemini Pro 1.5</option>
-          <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B</option>
-          <option value="deepseek/deepseek-r1">DeepSeek R1</option>
-        </select>
+        <div class="model-picker" id="createModel" data-value="">
+          <button type="button" class="mpicker-trigger" aria-haspopup="listbox" aria-expanded="false">
+            <span class="mpicker-label">—</span>
+            <svg class="mpicker-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="mpicker-menu" role="listbox"></div>
+        </div>
       </div>
     </div>
     <div class="create-modal-ft">
@@ -328,7 +325,7 @@
 <script src="js/supabase-client.js"></script>
 <script src="js/auth-guard.js"></script>
 <script src="js/boards.js"></script>
-<script src="js/agents.js"></script>
+<script src="js/agents.js?v=3"></script>
 <script src="js/sidebar.js"></script>
 </body>
 </html>
